@@ -5,6 +5,8 @@
 # Node / UI
 /ui/node_modules/
 /ui/dist/
+/runner-js/node_modules/
+/runner-js/dist/
 *.log
 
 # Editor / OS

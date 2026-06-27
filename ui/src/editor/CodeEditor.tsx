@@ -13,6 +13,15 @@ interface Props {
   placing: MarkerKind;
 }
 
+// The UI is language-neutral; the editor just picks highlighting by extension so
+// it renders whichever adapter (PHP or JS/TS) the host serves.
+function languageFor(path: string): string {
+  if (path.endsWith('.php')) return 'php';
+  if (path.endsWith('.ts') || path.endsWith('.tsx')) return 'typescript';
+  if (path.endsWith('.js') || path.endsWith('.jsx') || path.endsWith('.mjs')) return 'javascript';
+  return 'plaintext';
+}
+
 export function CodeEditor({ placing }: Props) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -98,7 +107,7 @@ export function CodeEditor({ placing }: Props) {
       height="100%"
       theme="vs-dark"
       path={openPath}
-      defaultLanguage="php"
+      language={languageFor(openPath)}
       value={source}
       onMount={onMount}
       options={{

@@ -1,21 +1,23 @@
 # Waypoint — a visual checkpoint-replay debugger
 
-Waypoint is a development and debugging tool for **PHP / Laravel** (JS/TS planned)
+Waypoint is a development and debugging tool for **PHP / Laravel** and **JS / TS**
 that is *not* a step-through debugger. Its core gesture is **reconstruct-state-then-invoke**:
 drop waypoints on public method calls during a real run, then re-enter any of them
 with the captured state rebuilt — safely, with flagged I/O swapped out and the
 whole run wrapped in a transaction that rolls back by default.
 
-> Status: **working vertical slice.** The PHP analysis core (parse / scan / swap /
-> waypoint instrument / capture / reconstruct-invoke), the **resident host**
-> (boots the app, runs slices, replays captured waypoints), the **WebSocket**
+> Status: **working vertical slice, two languages.** The PHP analysis core (parse /
+> scan / swap / waypoint instrument / capture / reconstruct-invoke), the **resident
+> host** (boots the app, runs slices, replays captured waypoints), the **WebSocket**
 > control plane (live capture streaming), **whole-request runs** via include-time
 > instrumentation (capture across controller → service → model in one real
 > request), and the UI (class-diagram canvas, Monaco gutter waypoints, swap
 > workbench, unit + request run controls, ledger timeline) are all wired
 > end-to-end. A real Laravel app boots via `LaravelHost`; anything else falls back
-> to `BareHost`. Next: the JS/TS adapter (CDP transport + framework-state ledger).
-> See [docs/tech-design.md](docs/tech-design.md).
+> to `BareHost`. A **JS/TS adapter** ([runner-js/](runner-js/)) speaks the same
+> JSON-RPC contract on the same port, so the same UI drives either language. Next:
+> the CDP / framework-state ledger for the browser side. See
+> [docs/tech-design.md](docs/tech-design.md).
 
 ---
 
@@ -127,7 +129,8 @@ ledger fill live, and replay any captured waypoint.
 | `runner/src/Run` | SliceRunner (unit) + RequestRunner (whole-request subprocess) |
 | `runner/src/Rpc` | JSON-RPC dispatcher, HTTP + WebSocket transports |
 | `runner/bin` | `host.php` (WS resident), `server.php` (HTTP), `request-run.php` (subprocess), `worker.php` (FrankenPHP) |
-| `ui/` | React + TS UI (canvas, editor, run controls, ledger) |
+| `runner-js/` | JS/TS adapter — same JSON-RPC contract (TypeScript compiler API + Node `vm`) |
+| `ui/` | React + TS UI (canvas, editor, run controls, ledger) — language-neutral |
 | `docs/tech-design.md` | the implementation-facing design |
 | `docs/concept-notes.md` | the rationale record behind the decisions |
 

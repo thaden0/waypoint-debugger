@@ -1,0 +1,26 @@
+{
+  "name": "waypoint-runner-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JS/TS adapter for the Waypoint debugger — same JSON-RPC contract as the PHP runner, over the same wire.",
+  "bin": {
+    "waypoint-js-host": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "host": "tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "^5.6.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.8"
+  }
+}
