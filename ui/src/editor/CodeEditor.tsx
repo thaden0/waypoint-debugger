@@ -33,6 +33,8 @@ export function CodeEditor({ placing }: Props) {
   const problems = useStore((s) => s.problems);
   const markers = useStore((s) => s.markers);
   const toggleMarker = useStore((s) => s.toggleMarker);
+  const revealLine = useStore((s) => s.revealLine);
+  const clearReveal = useStore((s) => s.clearReveal);
 
   // Eligible waypoint lines = public method declaration lines.
   const eligibleLines = new Set<number>();
@@ -97,6 +99,23 @@ export function CodeEditor({ placing }: Props) {
 
     decorationsRef.current = ed.deltaDecorations(decorationsRef.current, decos);
   }, [markers, problems, openPath, source, structure]);
+
+  // Reveal + flash a line when a canvas member is clicked (zoom-to-method).
+  useEffect(() => {
+    const ed = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!ed || !monaco || !revealLine) return;
+    ed.revealLineInCenter(revealLine);
+    ed.setPosition({ lineNumber: revealLine, column: 1 });
+    const ids = ed.deltaDecorations([], [
+      { range: new monaco.Range(revealLine, 1, revealLine, 1), options: { isWholeLine: true, className: 'wp-reveal-flash' } },
+    ]);
+    const t = setTimeout(() => {
+      ed.deltaDecorations(ids, []);
+      clearReveal();
+    }, 1400);
+    return () => clearTimeout(t);
+  }, [revealLine, source, clearReveal]);
 
   if (!openPath) {
     return <div className="editor-empty">Open a file from the explorer or double-click a class in the canvas.</div>;

@@ -94,6 +94,42 @@ body { background: var(--bg); color: var(--text); }
 .class-node__members li.waypoint-ok { color: var(--text); }
 .wp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wp); margin-left: auto; }
 
+/* Canvas mode toggle */
+.canvas-mode { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg-1); }
+.canvas-mode button { background: var(--bg-2); border: none; color: var(--muted); padding: 5px 12px; font-size: 11px; cursor: pointer; }
+.canvas-mode button.is-active { background: var(--accent); color: #fff; }
+
+/* Tree canvas — nested group + class nodes */
+.tree-group { width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 8px; background: rgba(15,23,42,0.55); }
+.tree-group--folder { border-color: #334155; background: rgba(30,41,59,0.45); }
+.tree-group--file { border-color: #1e3a5f; background: rgba(15,23,42,0.6); }
+.tree-group__header { width: 100%; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 12px; }
+.tree-group__header:hover { background: rgba(148,163,184,0.08); }
+.tree-group__chevron { color: var(--muted); width: 10px; }
+.tree-group__icon { font-size: 11px; }
+.tree-group__name { font-weight: 600; font-family: ui-monospace, monospace; }
+.tree-group--folder .tree-group__name { color: #cbd5e1; }
+.tree-group__count { margin-left: auto; color: var(--muted); font-size: 10px; background: var(--bg-3); border-radius: 8px; padding: 1px 7px; }
+
+.tree-class { width: 100%; height: 100%; background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 7px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+.tree-class__header { width: 100%; height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; }
+.tree-class__header:hover { background: rgba(59,130,246,0.1); }
+.tree-class__chevron { color: var(--muted); width: 10px; }
+.tree-class__kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; }
+.tree-class__name { font-weight: 700; font-size: 13px; }
+.tree-class__count { margin-left: auto; color: var(--muted); font-size: 10px; }
+.tree-class__members { border-top: 1px solid var(--line); }
+.tree-row { width: 100%; height: 19px; display: flex; align-items: center; gap: 4px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; font-family: ui-monospace, monospace; font-size: 11px; text-align: left; }
+.tree-row:hover { background: rgba(59,130,246,0.14); }
+.tree-row .vis { color: var(--muted); width: 8px; }
+.tree-row .type { color: var(--muted); }
+.tree-row.waypoint-ok { color: var(--text); }
+.tree-row .wp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wp); margin-left: auto; }
+
+/* Reveal flash when zooming a member into the editor */
+.wp-reveal-flash { background: rgba(59,130,246,0.18); animation: wp-flash 1.4s ease-out; }
+@keyframes wp-flash { 0% { background: rgba(59,130,246,0.45); } 100% { background: rgba(59,130,246,0); } }
+
 /* Editor gutter glyphs (VS Code-style ticks) */
 .wp-glyph-breakpoint { background: var(--bp); border-radius: 50%; width: 10px !important; height: 10px !important; margin: 5px 0 0 6px; box-shadow: 0 0 6px var(--bp); }
 .wp-glyph-waypoint { background: var(--wp); border-radius: 50%; width: 10px !important; height: 10px !important; margin: 5px 0 0 6px; box-shadow: 0 0 6px var(--wp); }

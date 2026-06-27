@@ -39,6 +39,10 @@ interface State {
 
   mode: Mode;
   view: View;
+  canvasMode: 'flat' | 'tree';
+  collapsedGroups: string[];
+  expandedClasses: string[];
+  revealLine: number | null;
 
   markers: GutterMarker[];
   swaps: SwapSite[];
@@ -64,6 +68,11 @@ interface State {
   removeSwap: (path: string, line: number) => void;
   setView: (view: View) => void;
   setMode: (mode: Mode) => void;
+  setCanvasMode: (m: 'flat' | 'tree') => void;
+  toggleGroup: (id: string) => void;
+  toggleClass: (id: string) => void;
+  revealMember: (path: string, line: number) => Promise<void>;
+  clearReveal: () => void;
   setEntryMethod: (m: string) => void;
   setEntryArgs: (a: string) => void;
   setRunMode: (m: 'unit' | 'request') => void;
@@ -94,6 +103,10 @@ export const useStore = create<State>((set, get) => ({
   problems: [],
   mode: 'idle',
   view: 'canvas',
+  canvasMode: 'tree',
+  collapsedGroups: [],
+  expandedClasses: [],
+  revealLine: null,
   markers: [],
   swaps: [],
   runMode: 'unit',
@@ -187,6 +200,20 @@ export const useStore = create<State>((set, get) => ({
 
   setView: (view) => set({ view }),
   setMode: (mode) => set({ mode }),
+  setCanvasMode: (canvasMode) => set({ canvasMode }),
+  toggleGroup: (id) => {
+    const c = get().collapsedGroups;
+    set({ collapsedGroups: c.includes(id) ? c.filter((x) => x !== id) : [...c, id] });
+  },
+  toggleClass: (id) => {
+    const e = get().expandedClasses;
+    set({ expandedClasses: e.includes(id) ? e.filter((x) => x !== id) : [...e, id] });
+  },
+  revealMember: async (path, line) => {
+    if (get().openPath !== path) await get().openFile(path);
+    set({ view: 'code', revealLine: line });
+  },
+  clearReveal: () => set({ revealLine: null }),
   setEntryMethod: (entryMethod) => set({ entryMethod }),
   setEntryArgs: (entryArgs) => set({ entryArgs }),
   setRunMode: (runMode) => set({ runMode }),

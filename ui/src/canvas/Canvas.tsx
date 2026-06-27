@@ -3,6 +3,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
@@ -11,18 +12,17 @@ import '@xyflow/react/dist/style.css';
 import { useStore } from '../store/useStore';
 import type { ClassModel } from '../types';
 import { ClassNode } from './ClassNode';
+import { TreeGroupNode } from './TreeGroupNode';
+import { TreeClassNode } from './TreeClassNode';
+import { buildTree, layoutTree } from './tree';
 import { layout } from './layout';
 
-const nodeTypes = { classNode: ClassNode };
+const nodeTypes = { classNode: ClassNode, treeGroup: TreeGroupNode, treeClass: TreeClassNode };
 
-function buildGraph(): { nodes: Node[]; edges: Edge[] } {
+function buildFlatGraph(): { nodes: Node[]; edges: Edge[] } {
   const tree = useStore.getState().tree;
   if (!tree) return { nodes: [], edges: [] };
 
-  // Path-scoped unique ids: a real Laravel tree has many anonymous migration
-  // classes (`return new class extends Migration`) that would collide on name.
-  // Skip the anonymous ones (not useful in the diagram) and key the rest by
-  // path + fqn + line so nothing clashes.
   const classes: Array<{ model: ClassModel; filePath: string; uid: string }> = [];
   for (const file of tree.files) {
     for (const node of file.nodes) {
@@ -32,7 +32,6 @@ function buildGraph(): { nodes: Node[]; edges: Edge[] } {
       classes.push({ model, filePath: file.path, uid: `${file.path}::${model.fqn || model.name}::${model.line.start}` });
     }
   }
-
   const byName = new Map(classes.map((c) => [c.model.name, c]));
   const byFqn = new Map(classes.map((c) => [c.model.fqn, c]));
 
@@ -47,30 +46,41 @@ function buildGraph(): { nodes: Node[]; edges: Edge[] } {
     };
   });
 
-  // Inheritance edges where both ends are in the set.
   const edges: Edge[] = [];
   for (const { model, uid } of classes) {
     const targets = [model.extends, ...model.implements].filter(Boolean) as string[];
     for (const t of targets) {
       const target = byFqn.get(t) ?? byName.get(t.split('\\').pop() ?? t);
       if (target && target.uid !== uid) {
-        edges.push({ id: `${uid}->${target.uid}`, source: uid, target: target.uid, animated: false, style: { stroke: '#94a3b8' } });
+        edges.push({ id: `${uid}->${target.uid}`, source: uid, target: target.uid, style: { stroke: '#94a3b8' } });
       }
     }
   }
-
   return { nodes, edges };
 }
 
 function CanvasInner() {
   const tree = useStore((s) => s.tree);
+  const canvasMode = useStore((s) => s.canvasMode);
+  const setCanvasMode = useStore((s) => s.setCanvasMode);
+  const collapsedGroups = useStore((s) => s.collapsedGroups);
+  const expandedClasses = useStore((s) => s.expandedClasses);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  const raw = useMemo(() => buildGraph(), [tree]);
+  // Tree mode is synchronous; flat mode runs elk.
+  const treeRoot = useMemo(() => (tree ? buildTree(tree.files) : null), [tree]);
 
   useEffect(() => {
     let cancelled = false;
+    if (canvasMode === 'tree') {
+      if (treeRoot) {
+        setNodes(layoutTree(treeRoot, new Set(collapsedGroups), new Set(expandedClasses)));
+        setEdges([]);
+      }
+      return;
+    }
+    const raw = buildFlatGraph();
     layout(raw.nodes, raw.edges).then((laidOut) => {
       if (!cancelled) {
         setNodes(laidOut);
@@ -80,10 +90,10 @@ function CanvasInner() {
     return () => {
       cancelled = true;
     };
-  }, [raw]);
+  }, [canvasMode, treeRoot, collapsedGroups, expandedClasses]);
 
   if (!tree) {
-    return <div className="canvas-empty">Load a project to see the class diagram.</div>;
+    return <div className="canvas-empty">Load a project to see the structure.</div>;
   }
 
   return (
@@ -91,7 +101,7 @@ function CanvasInner() {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      minZoom={0.15}
+      minZoom={0.1}
       maxZoom={2.5}
       fitView
       proOptions={{ hideAttribution: true }}
@@ -99,6 +109,10 @@ function CanvasInner() {
       <Background gap={24} color="#1e293b" />
       <Controls />
       <MiniMap pannable zoomable nodeColor="#3b82f6" maskColor="rgba(2,6,23,0.7)" />
+      <Panel position="top-left" className="canvas-mode">
+        <button className={canvasMode === 'tree' ? 'is-active' : ''} onClick={() => setCanvasMode('tree')}>Tree</button>
+        <button className={canvasMode === 'flat' ? 'is-active' : ''} onClick={() => setCanvasMode('flat')}>Flat</button>
+      </Panel>
     </ReactFlow>
   );
 }
