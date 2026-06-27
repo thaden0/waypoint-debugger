@@ -25,6 +25,8 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use Waypoint\Runner\Capture\Recorder;
+use Waypoint\Runner\Debug\Breakpoint;
+use Waypoint\Runner\Debug\BreakpointHalt;
 use Waypoint\Runner\Host\HostFactory;
 use Waypoint\Runner\Instrument\InstrumentingStreamWrapper;
 use Waypoint\Runner\Rpc\Notifier;
@@ -65,6 +67,11 @@ $host = HostFactory::for($config['projectRoot'] ?? getcwd(), $config['driver'] ?
 InstrumentingStreamWrapper::activate($config['projectRoot'] ?? getcwd(), $config['targets'] ?? []);
 
 Recorder::reset();
+Breakpoint::reset();
+// In a whole Laravel request, halting via exception would be swallowed by the
+// framework's error handler, so breakpoints stream every hit (trace) rather than
+// halt. (run.slice, a direct invoke, uses halt.)
+Breakpoint::setMode($config['breakpointMode'] ?? 'trace');
 
 try {
     $host->boot();
@@ -79,10 +86,13 @@ try {
 
     $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => [
         'ok' => $result['ok'],
+        'paused' => $result['paused'] ?? false,
+        'breakpoint' => $result['breakpoint'] ?? null,
         'result' => $result['result'] ?? null,
         'response' => $result['response'] ?? null,
         'error' => $result['error'] ?? null,
         'ledger' => Recorder::ledger(),
+        'breakpoints' => Breakpoint::hits(),
     ]]);
 } catch (\Throwable $e) {
     InstrumentingStreamWrapper::deactivate();
@@ -126,6 +136,9 @@ function runCall(object $host, array $entry): array
         $result = $receiver->$method(...$args);
         $rollback(); // real runs record but don't keep writes by default
         return ['ok' => true, 'result' => summarizeResult($result)];
+    } catch (BreakpointHalt $halt) {
+        $rollback();
+        return ['ok' => true, 'paused' => true, 'breakpoint' => ['id' => $halt->bpId, 'scope' => $halt->scope]];
     } catch (\Throwable $e) {
         $rollback();
         return ['ok' => false, 'error' => $e->getMessage()];

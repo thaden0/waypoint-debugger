@@ -149,6 +149,8 @@ final class MethodRegistry
                     'receiverArgs' => $p['receiverArgs'] ?? [],
                     'waypoints' => $p['waypoints'] ?? [],
                     'swaps' => $p['swaps'] ?? [],
+                    'breakpoints' => $p['breakpoints'] ?? [],
+                    'breakpointMode' => $p['breakpointMode'] ?? 'halt',
                 ]);
                 $result['ledger'] = Recorder::ledger();
                 return $result;
@@ -168,9 +170,10 @@ final class MethodRegistry
                     'psr4' => $p['psr4'] ?? [],
                     'targets' => $p['targets'] ?? [],
                     'entry' => $p['entry'] ?? ['kind' => 'http', 'method' => 'GET', 'uri' => '/'],
+                    'breakpointMode' => $p['breakpointMode'] ?? 'trace',
                 ];
-                return $runner->run($config, static function (array $entry): void {
-                    Notifier::notify('ledger.captured', $entry);
+                return $runner->run($config, static function (string $method, array $params): void {
+                    Notifier::notify($method, $params); // ledger.captured + breakpoint.hit
                 });
             },
 

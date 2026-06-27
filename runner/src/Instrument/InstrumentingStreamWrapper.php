@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waypoint\Runner\Instrument;
 
+use Waypoint\Runner\Debug\BreakpointInstrumenter;
 use Waypoint\Runner\Swap\Swapper;
 use Waypoint\Runner\Waypoint\WaypointInstrumenter;
 
@@ -54,6 +55,7 @@ final class InstrumentingStreamWrapper
             self::$targets[$real] = [
                 'waypoints' => $cfg['waypoints'] ?? [],
                 'swaps' => $cfg['swaps'] ?? [],
+                'breakpoints' => $cfg['breakpoints'] ?? [],
             ];
         }
         self::register();
@@ -289,6 +291,9 @@ final class InstrumentingStreamWrapper
         }
         if (($cfg['waypoints'] ?? []) !== []) {
             $source = (new WaypointInstrumenter())->instrument($source, $cfg['waypoints'])['source'];
+        }
+        if (($cfg['breakpoints'] ?? []) !== []) {
+            $source = (new BreakpointInstrumenter())->instrument($source, $cfg['breakpoints'])['source'];
         }
         return $source;
     }

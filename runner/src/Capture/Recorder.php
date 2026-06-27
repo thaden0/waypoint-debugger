@@ -114,14 +114,17 @@ final class Recorder
 
     private static function previewObject(object $value): array
     {
-        // For Eloquent-shaped objects, getAttributes() is the meaningful preview;
-        // fall back to public props.
+        // For Eloquent-shaped objects, getAttributes() is the meaningful preview.
         if (method_exists($value, 'getAttributes')) {
             try {
                 return (array) $value->getAttributes();
             } catch (\Throwable) {
                 // fall through
             }
+        }
+        // Collections / Countables hold their items privately; show the count.
+        if ($value instanceof \Countable) {
+            return ['count' => count($value)];
         }
         return array_map(
             static fn ($v) => is_scalar($v) || $v === null ? $v : get_debug_type($v),

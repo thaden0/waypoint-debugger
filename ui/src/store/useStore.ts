@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { call, ping } from '../rpc/client';
 import { wsClient } from '../rpc/ws';
 import type {
+  BreakpointHit,
   FileModel,
   GutterMarker,
   InvokeResult,
@@ -49,6 +50,7 @@ interface State {
   entryMethod: string | null;
   entryArgs: string;
   ledger: LedgerEntry[];
+  breakpointHits: BreakpointHit[];
   lastRun: RunResult | null;
   lastInvoke: { seq: number; result: InvokeResult } | null;
   browserSrc: string | null;
@@ -100,6 +102,7 @@ export const useStore = create<State>((set, get) => ({
   entryMethod: null,
   entryArgs: '[]',
   ledger: [],
+  breakpointHits: [],
   lastRun: null,
   lastInvoke: null,
   browserSrc: null,
@@ -113,6 +116,9 @@ export const useStore = create<State>((set, get) => ({
         if (method === 'ledger.captured') {
           set({ ledger: [...get().ledger, params as unknown as LedgerEntry] });
           get().log.push(`captured ${(params as { id: string }).id}`);
+        } else if (method === 'breakpoint.hit') {
+          set({ breakpointHits: [...get().breakpointHits, params as unknown as BreakpointHit] });
+          get().log.push(`breakpoint ${(params as { id: string }).id}`);
         }
       });
       const info = await wsClient.call<RunnerInfo>('runner.info');
@@ -206,11 +212,14 @@ export const useStore = create<State>((set, get) => ({
     const waypoints = markers
       .filter((m) => m.path === openPath && m.kind === 'waypoint')
       .map((m) => ({ line: m.line }));
+    const breakpoints = markers
+      .filter((m) => m.path === openPath && m.kind === 'breakpoint')
+      .map((m) => ({ line: m.line }));
     const fileSwaps = swaps
       .filter((s) => s.path === openPath)
       .map((s) => ({ line: s.line, mode: 'replace', expression: s.expression }));
 
-    set({ mode: 'running', ledger: [], log: [...get().log, `run ${(firstClass as { name: string }).name}::${entryMethod}`] });
+    set({ mode: 'running', ledger: [], breakpointHits: [], log: [...get().log, `run ${(firstClass as { name: string }).name}::${entryMethod}`] });
 
     try {
       const run = await rpc<RunResult>('run.slice', {
@@ -219,6 +228,8 @@ export const useStore = create<State>((set, get) => ({
         method: entryMethod,
         args,
         waypoints,
+        breakpoints,
+        breakpointMode: 'halt',
         swaps: fileSwaps,
       });
       set({ lastRun: run, ledger: run.ledger ?? get().ledger });
@@ -233,20 +244,19 @@ export const useStore = create<State>((set, get) => ({
     // Cross-file targets: every waypoint marker, grouped by file. This is the
     // whole-request capability — capture flows through every targeted class the
     // request touches, not one unit.
-    const targets: Record<string, { waypoints: { line: number }[]; swaps: { line: number; mode: string; expression?: string }[] }> = {};
-    for (const m of markers.filter((mk) => mk.kind === 'waypoint')) {
-      (targets[m.path] ??= { waypoints: [], swaps: [] }).waypoints.push({ line: m.line });
-    }
-    for (const s of swaps) {
-      (targets[s.path] ??= { waypoints: [], swaps: [] }).swaps.push({ line: s.line, mode: 'replace', expression: s.expression });
-    }
+    type Target = { waypoints: { line: number }[]; swaps: { line: number; mode: string; expression?: string }[]; breakpoints: { line: number }[] };
+    const targets: Record<string, Target> = {};
+    const ensure = (p: string): Target => (targets[p] ??= { waypoints: [], swaps: [], breakpoints: [] });
+    for (const m of markers.filter((mk) => mk.kind === 'waypoint')) ensure(m.path).waypoints.push({ line: m.line });
+    for (const m of markers.filter((mk) => mk.kind === 'breakpoint')) ensure(m.path).breakpoints.push({ line: m.line });
+    for (const s of swaps) ensure(s.path).swaps.push({ line: s.line, mode: 'replace', expression: s.expression });
 
     if (Object.keys(targets).length === 0) {
-      set({ lastRun: { ok: false, error: 'place at least one waypoint before running a request' } });
+      set({ lastRun: { ok: false, error: 'place at least one waypoint or breakpoint before running a request' } });
       return;
     }
 
-    set({ mode: 'running', ledger: [], log: [...get().log, `request ${reqMethod} ${reqUri}`] });
+    set({ mode: 'running', ledger: [], breakpointHits: [], log: [...get().log, `request ${reqMethod} ${reqUri}`] });
 
     try {
       const run = await rpc<RunResult & { response?: { body?: string } }>('run.request', {

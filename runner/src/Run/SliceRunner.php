@@ -45,6 +45,7 @@ final class SliceRunner
         $source = $req['source'];
         $swaps = $req['swaps'] ?? [];
         $waypoints = $req['waypoints'] ?? [];
+        $breakpoints = $req['breakpoints'] ?? [];
 
         // Swaps applied in replace mode bake the mock expression in (no scope
         // injection needed); indirect-mode swaps are a static-preview affordance.
@@ -54,6 +55,11 @@ final class SliceRunner
         if ($waypoints !== []) {
             $source = (new WaypointInstrumenter())->instrument($source, $waypoints)['source'];
         }
+        if ($breakpoints !== []) {
+            $source = (new \Waypoint\Runner\Debug\BreakpointInstrumenter())->instrument($source, $breakpoints)['source'];
+        }
+        \Waypoint\Runner\Debug\Breakpoint::reset();
+        \Waypoint\Runner\Debug\Breakpoint::setMode($req['breakpointMode'] ?? 'halt');
 
         $prefix = 'WpRun_' . (self::$runSeq++);
         try {
@@ -90,6 +96,16 @@ final class SliceRunner
             return [
                 'ok' => true,
                 'result' => $this->summarize($result),
+                'runtimeClass' => $runtimeFqn,
+                'ledgerCount' => count(Recorder::ledger()),
+            ];
+        } catch (\Waypoint\Runner\Debug\BreakpointHalt $halt) {
+            // Run-to-breakpoint: stopped at the line, scope captured.
+            $rollback();
+            return [
+                'ok' => true,
+                'paused' => true,
+                'breakpoint' => ['id' => $halt->bpId, 'scope' => $halt->scope],
                 'runtimeClass' => $runtimeFqn,
                 'ledgerCount' => count(Recorder::ledger()),
             ];

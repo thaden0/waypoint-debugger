@@ -20,10 +20,10 @@ final class RequestRunner
 
     /**
      * @param array<string,mixed> $config       run-config for bin/request-run.php
-     * @param null|callable(array):void $onCapture  called per streamed ledger.captured entry
+     * @param null|callable(string,array):void $onEvent  called per streamed notification (method, params)
      * @return array{ok:bool,result?:mixed,response?:mixed,error?:string,ledger?:array}
      */
-    public function run(array $config, ?callable $onCapture = null): array
+    public function run(array $config, ?callable $onEvent = null): array
     {
         $script = $this->runnerDir . '/bin/request-run.php';
         $descriptors = [
@@ -59,10 +59,11 @@ final class RequestRunner
                     continue;
                 }
                 $method = $msg['method'] ?? '';
-                if ($method === 'ledger.captured' && $onCapture !== null) {
-                    $onCapture($msg['params'] ?? []);
-                } elseif ($method === 'run.result') {
+                if ($method === 'run.result') {
                     $final = $msg['params'] ?? null;
+                } elseif ($method !== '' && $onEvent !== null) {
+                    // forward ledger.captured, breakpoint.hit, … live to the UI
+                    $onEvent($method, $msg['params'] ?? []);
                 }
             }
         }

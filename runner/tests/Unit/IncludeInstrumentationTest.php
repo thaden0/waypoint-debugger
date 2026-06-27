@@ -86,8 +86,10 @@ final class IncludeInstrumentationTest extends TestCase
         ];
 
         $streamed = [];
-        $result = (new RequestRunner($runnerDir))->run($config, function (array $entry) use (&$streamed): void {
-            $streamed[] = $entry['id'];
+        $result = (new RequestRunner($runnerDir))->run($config, function (string $method, array $params) use (&$streamed): void {
+            if ($method === 'ledger.captured') {
+                $streamed[] = $params['id'];
+            }
         });
 
         $this->assertTrue($result['ok'], $result['error'] ?? 'run failed');

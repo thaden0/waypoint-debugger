@@ -154,6 +154,17 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
 .req-line select { flex: 0 0 70px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; font-size: 11px; }
 .req-line input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 6px; font-size: 12px; font-family: ui-monospace, monospace; }
 
+/* Breakpoint paused scope */
+.paused { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); border-radius: 6px; padding: 8px; }
+.paused__head { font-size: 12px; color: #fca5a5; margin-bottom: 6px; }
+.paused__head code { color: #fecaca; }
+.scope { width: 100%; border-collapse: collapse; font-size: 11px; }
+.scope td { padding: 2px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.scope__name { color: #93c5fd; font-family: ui-monospace, monospace; white-space: nowrap; }
+.scope__type { color: var(--muted); white-space: nowrap; }
+.scope__val code { color: #fbbf24; word-break: break-all; }
+.scope tr.tier3 .scope__val code { color: var(--muted); }
+
 /* Ledger timeline */
 .ledger { display: flex; flex-direction: column; gap: 6px; }
 .ledger__entry { background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--wp); border-radius: 6px; padding: 6px 8px; }

@@ -126,6 +126,18 @@ export interface LedgerEntry {
   reproducible: boolean;
 }
 
+export interface ScopeVar {
+  tier: number;
+  type: string;
+  preview: unknown;
+  note?: string;
+}
+
+export interface BreakpointHit {
+  id: string;
+  scope: Record<string, ScopeVar>;
+}
+
 export interface RunResult {
   ok: boolean;
   result?: unknown;
@@ -133,6 +145,8 @@ export interface RunResult {
   runtimeClass?: string;
   ledgerCount?: number;
   ledger?: LedgerEntry[];
+  paused?: boolean;
+  breakpoint?: BreakpointHit;
 }
 
 export interface InvokeResult {

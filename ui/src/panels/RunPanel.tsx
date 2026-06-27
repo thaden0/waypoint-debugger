@@ -71,7 +71,7 @@ export function RunControls() {
         </>
       )}
 
-      {lastRun && (
+      {lastRun && !lastRun.paused && (
         <div className={'run-result ' + (lastRun.ok ? 'ok' : 'err')}>
           {lastRun.ok ? (
             <><strong>ok</strong> → <code>{JSON.stringify(lastRun.result ?? 'rendered')}</code></>
@@ -80,8 +80,39 @@ export function RunControls() {
           )}
         </div>
       )}
+
+      {lastRun?.paused && lastRun.breakpoint && (
+        <div className="paused">
+          <div className="paused__head">⏸ paused at <code>{lastRun.breakpoint.id}</code></div>
+          <ScopeView scope={lastRun.breakpoint.scope} />
+        </div>
+      )}
     </div>
   );
+}
+
+function ScopeView({ scope }: { scope: Record<string, { tier: number; type: string; preview: unknown }> }) {
+  const entries = Object.entries(scope);
+  if (entries.length === 0) return <div className="muted">no locals in scope</div>;
+  return (
+    <table className="scope">
+      <tbody>
+        {entries.map(([name, v]) => (
+          <tr key={name} className={v.tier === 3 ? 'tier3' : ''}>
+            <td className="scope__name">{name}</td>
+            <td className="scope__type">{v.type}</td>
+            <td className="scope__val"><code>{previewText(v.preview)}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function previewText(p: unknown): string {
+  if (p === null) return 'null';
+  if (typeof p === 'object') return JSON.stringify(p);
+  return String(p);
 }
 
 export function LedgerTimeline() {
