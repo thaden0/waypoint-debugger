@@ -26,7 +26,7 @@ export function TreeGroupNode({ data }: NodeProps) {
         <span className="tree-group__chevron">{collapsed ? '▸' : '▾'}</span>
         <span className="tree-group__icon">{kind === 'folder' ? '▣' : '▢'}</span>
         <span className="tree-group__name">{name}</span>
-        <span className="tree-group__count">{count}</span>
+        {collapsed && <span className="tree-group__count">{count}</span>}
       </button>
     </div>
   );

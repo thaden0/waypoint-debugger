@@ -104,6 +104,7 @@ function CanvasInner() {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      colorMode="dark"
       minZoom={0.1}
       maxZoom={2.5}
       fitView
