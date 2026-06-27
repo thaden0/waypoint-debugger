@@ -14,40 +14,48 @@ export class WsClient {
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private handlers = new Set<NotificationHandler>();
-  private connectedResolvers: Array<(ok: boolean) => void> = [];
+  private connecting: Promise<boolean> | null = null;
   public status: 'idle' | 'connecting' | 'open' | 'closed' = 'idle';
 
+  // Idempotent under concurrency: multiple callers (e.g. StrictMode's double
+  // mount, or a retry loop) share ONE in-flight attempt and ONE socket.
   connect(): Promise<boolean> {
     if (this.status === 'open') return Promise.resolve(true);
+    if (this.connecting) return this.connecting;
     this.status = 'connecting';
-    return new Promise((resolve) => {
-      this.connectedResolvers.push(resolve);
+
+    this.connecting = new Promise<boolean>((resolve) => {
+      let ws: WebSocket;
       try {
-        this.ws = new WebSocket(WS_URL);
+        ws = new WebSocket(WS_URL);
       } catch {
-        this.flushConnect(false);
+        this.status = 'closed';
+        this.connecting = null;
+        resolve(false);
         return;
       }
-      this.ws.addEventListener('open', () => {
+      this.ws = ws;
+      ws.addEventListener('open', () => {
         this.status = 'open';
-        this.flushConnect(true);
+        this.connecting = null;
+        resolve(true);
       });
-      this.ws.addEventListener('close', () => {
+      ws.addEventListener('error', () => {
+        if (this.status === 'connecting') {
+          this.status = 'closed';
+          this.connecting = null;
+          resolve(false);
+        }
+      });
+      ws.addEventListener('close', () => {
         this.status = 'closed';
-        this.flushConnect(false);
+        this.connecting = null;
         for (const p of this.pending.values()) p.reject(new Error('socket closed'));
         this.pending.clear();
       });
-      this.ws.addEventListener('error', () => {
-        if (this.status === 'connecting') this.flushConnect(false);
-      });
-      this.ws.addEventListener('message', (ev) => this.onMessage(String(ev.data)));
+      ws.addEventListener('message', (ev) => this.onMessage(String(ev.data)));
     });
-  }
-
-  private flushConnect(ok: boolean) {
-    this.connectedResolvers.forEach((r) => r(ok));
-    this.connectedResolvers = [];
+    return this.connecting;
   }
 
   private onMessage(data: string) {

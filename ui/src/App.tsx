@@ -25,9 +25,22 @@ export default function App() {
   const [placing, setPlacing] = useState<MarkerKind>('breakpoint');
 
   useEffect(() => {
-    connect().then(() => {
-      if (useStore.getState().connected) loadTree();
-    });
+    let cancelled = false;
+    (async () => {
+      // Retry until the runner is reachable, rather than giving up after one
+      // racy attempt at mount.
+      for (let i = 0; i < 40 && !cancelled; i++) {
+        await connect();
+        if (useStore.getState().connected) {
+          await loadTree();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [connect, loadTree]);
 
   return (

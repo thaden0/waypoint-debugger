@@ -19,49 +19,42 @@ function buildGraph(): { nodes: Node[]; edges: Edge[] } {
   const tree = useStore.getState().tree;
   if (!tree) return { nodes: [], edges: [] };
 
-  const classes: Array<{ model: ClassModel; filePath: string }> = [];
+  // Path-scoped unique ids: a real Laravel tree has many anonymous migration
+  // classes (`return new class extends Migration`) that would collide on name.
+  // Skip the anonymous ones (not useful in the diagram) and key the rest by
+  // path + fqn + line so nothing clashes.
+  const classes: Array<{ model: ClassModel; filePath: string; uid: string }> = [];
   for (const file of tree.files) {
     for (const node of file.nodes) {
-      if (node.kind !== 'function') {
-        classes.push({ model: node as ClassModel, filePath: file.path });
-      }
+      if (node.kind === 'function') continue;
+      const model = node as ClassModel;
+      if (model.name === '(anonymous)' || !model.name) continue;
+      classes.push({ model, filePath: file.path, uid: `${file.path}::${model.fqn || model.name}::${model.line.start}` });
     }
   }
 
   const byName = new Map(classes.map((c) => [c.model.name, c]));
   const byFqn = new Map(classes.map((c) => [c.model.fqn, c]));
 
-  const nodes: Node[] = classes.map(({ model, filePath }) => {
+  const nodes: Node[] = classes.map(({ model, filePath, uid }) => {
     const methodCount = model.members.filter((m) => m.kind === 'method').length;
     const propCount = model.members.length - methodCount;
     return {
-      id: model.fqn || model.name,
+      id: uid,
       type: 'classNode',
       position: { x: 0, y: 0 },
-      data: {
-        model,
-        filePath,
-        width: 240,
-        height: 70 + (methodCount + propCount) * 18,
-      },
+      data: { model, filePath, width: 240, height: 70 + (methodCount + propCount) * 18 },
     };
   });
 
   // Inheritance edges where both ends are in the set.
   const edges: Edge[] = [];
-  for (const { model } of classes) {
-    const id = model.fqn || model.name;
+  for (const { model, uid } of classes) {
     const targets = [model.extends, ...model.implements].filter(Boolean) as string[];
     for (const t of targets) {
       const target = byFqn.get(t) ?? byName.get(t.split('\\').pop() ?? t);
-      if (target) {
-        edges.push({
-          id: `${id}->${target.model.fqn}`,
-          source: id,
-          target: target.model.fqn || target.model.name,
-          animated: false,
-          style: { stroke: '#94a3b8' },
-        });
+      if (target && target.uid !== uid) {
+        edges.push({ id: `${uid}->${target.uid}`, source: uid, target: target.uid, animated: false, style: { stroke: '#94a3b8' } });
       }
     }
   }
