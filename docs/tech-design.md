@@ -595,6 +595,62 @@ launcher provisions a sample Laravel testbed for first-run (a `waypoint init` de
 only attaching to an existing project; and whether to ship prebuilt UI assets in the
 repo (so `up` skips the build) or always build on first run.
 
+**Built:** `waypoint.mjs` (zero-dependency Node launcher) — `node waypoint.mjs up
+--project PATH` runs doctor → install → start host + HTTP fallback + UI → open the
+browser, with clean shutdown. Validated end-to-end against the real testbed.
+
+## 16. Model data console (ORM) — built
+
+A database client that works through the project's **own Eloquent models**, not raw
+SQL. The key realization: we build no query layer — the reconstruct-invoke engine
+already evaluates PHP against the booted host, so a query is just real Eloquent
+(`User::where('email', $x)->first()`) handed to the host to `eval` and render. It is a
+**visual, safe-by-default `artisan tinker` scoped to models**, fused with a data grid
+and wired into the replay loop.
+
+**Decisions (all built):**
+- **No query DSL — evaluate real Eloquent in the booted host.** Model short names are
+  aliased (so `User::...` works like tinker); the result renders via the shared
+  `Preview` helper (`toArray()`/`JsonSerializable` → models & Collections become data).
+  Strictly more powerful than SQL or a custom layer, because casts/accessors/scopes/
+  relationships all apply.
+- **Safety = the peek/commit dial, reused.** Every eval is transaction-guarded: **peek**
+  rolls back (default, safe), **commit** persists — the same dial as reconstruct+invoke.
+  So `User::create(...)` runs and shows its effect but rolls back unless you opt in.
+- **Two layers over one engine.** A **query console** (write Eloquent directly) and a
+  **model browser** (grid + filters) that ultimately drive the same eval; the executed
+  **SQL is shown** (from the query log) so the no-code path teaches the code.
+- **Feeds the replay loop.** `models.capture` snapshots a queried record into the ledger
+  so it becomes a receiver for the what-if loop — the data front-door to invoke.
+- **Adapter slots:** `models.list` (discover classes extending `Model`), `models.query`,
+  `models.table` (paginated rows + schema columns + filters), `models.relationships`
+  (AST-parse `hasOne/hasMany/belongsTo/...`), `models.alter` (format-preserving AST edit
+  of `$table/$fillable/$casts`), `models.migrate` (artisan), `models.capture`. PHP-only
+  until a JS/TS ORM introspector exists (Prisma/TypeORM/Drizzle — see §17).
+- **UI:** a **Data** tab — toolbar (refresh/run/migrate/search) · model list (with row
+  counts) · tabbed main (Grid · Source · Relationships · Alter model) · a PHP query
+  console along the bottom (REPL with `=>` results, type, per-result SQL, → ledger).
+- **Raw SQL tab:** deferred to last (the model path covers the need); when added, runs
+  `DB::select` through the same connection + guard.
+
+## 17. The adapter boundary — why this is a bridge, not a fork
+
+Everything language/framework-specific lives behind the **per-language adapter contract**
+(§3.2): one JSON-RPC method set, one WebSocket wire, one UI. The PHP adapter realizes it
+against Laravel via a thin **bridge** that reuses the framework (booted kernel, router,
+Eloquent, `DB`, `Http::fake`) rather than reimplementing it — the §5.5 principle. The
+JS/TS adapter already speaks the same wire for structure/scan/swap/waypoint/run/invoke
+and the CDP ledger.
+
+So new frameworks/languages are **additive**: implement the method set (or just the
+framework-specific slices — `routes()`, `models.*`, transaction hooks) for the new target
+and the same UI drives it. Today only the Laravel bridge implements the framework-specific
+slices (routes, ORM); a Symfony/Doctrine bridge, or a JS Express/Prisma bridge, would fill
+the same slots. This is deferred, not precluded — the contract + §14.3 registry (installable
+adapters) are the shape. We are **not** waiting to add frameworks before building features;
+we build each capability against the Laravel bridge first, behind the shared contract, so a
+second bridge inherits the UI for free.
+
 ---
 
 *Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*
