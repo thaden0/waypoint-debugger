@@ -6,6 +6,7 @@ interface TreeClassData extends Record<string, unknown> {
   model: ClassModel;
   filePath: string;
   id: string;
+  depth: number;
 }
 
 const KIND_COLOR: Record<string, string> = {
@@ -17,7 +18,7 @@ const VIS_GLYPH: Record<string, string> = { public: '+', protected: '#', private
 // focus into the editor (reveals that line) — the "all the way down to a method
 // in a beautiful editor" gesture.
 export function TreeClassNode({ data }: NodeProps) {
-  const { model, filePath, id } = data as TreeClassData;
+  const { model, filePath, id, depth } = data as TreeClassData;
   const expanded = useStore((s) => s.expandedClasses.includes(id));
   const toggleClass = useStore((s) => s.toggleClass);
   const revealMember = useStore((s) => s.revealMember);
@@ -28,7 +29,7 @@ export function TreeClassNode({ data }: NodeProps) {
   const props = model.members.filter((m) => m.kind === 'property');
 
   return (
-    <div className="tree-class" style={{ borderLeftColor: accent }}>
+    <div className="tree-class" data-depth={depth % 2} style={{ ['--node-accent' as string]: accent }}>
       <button className="tree-class__header" onClick={() => toggleClass(id)} onDoubleClick={() => openFile(filePath)}>
         <span className="tree-class__chevron">{expanded ? '▾' : '▸'}</span>
         <span className="tree-class__kind" style={{ color: accent }}>{model.kind}</span>

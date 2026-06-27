@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Background,
+  ControlButton,
   Controls,
   MiniMap,
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react';
 import type { Edge, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -65,6 +67,7 @@ function CanvasInner() {
   const setCanvasMode = useStore((s) => s.setCanvasMode);
   const collapsedGroups = useStore((s) => s.collapsedGroups);
   const expandedClasses = useStore((s) => s.expandedClasses);
+  const { fitView } = useReactFlow();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
@@ -107,7 +110,11 @@ function CanvasInner() {
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={24} color="#1b1820" />
-      <Controls />
+      <Controls showFitView={false}>
+        <ControlButton onClick={() => fitView({ padding: 0.15, duration: 300 })} title="Fit view">
+          <span className="wp-control-magnify">⌕</span>
+        </ControlButton>
+      </Controls>
       <MiniMap
         pannable
         zoomable

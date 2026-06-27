@@ -22,12 +22,20 @@
   --muted: #8a828d;
   --code-id: #d9bd7a; /* identifiers in code/scope — warm gold */
 
-  /* imperial red — the signature accent */
-  --accent: #a81d25;
-  --accent-rgb: 168 29 37;
-  --accent-bright: #d3232f; /* brighter red, reserved for the primary action */
-  --accent-bright-rgb: 211 35 47;
-  --glow: 0 0 14px rgba(211, 35, 47, 0.5);
+  /* imperial red — the signature accent (saturated crimson) */
+  --accent: #c1141f;
+  --accent-rgb: 193 20 31;
+  --accent-bright: #e01d29; /* brighter red, reserved for the primary action */
+  --accent-bright-rgb: 224 29 41;
+  --glow: 0 0 14px rgba(224, 29, 41, 0.55);
+
+  /* onyx cards: two shades alternate by nesting depth; a saturated crimson
+     stroke + a subtle red glow are the theme's signature ("diagnostic console") */
+  --card-a: #0e0c10;
+  --card-b: #19151a;
+  --card-edge: rgb(var(--accent-rgb) / 0.5);
+  --card-glow: 0 0 13px rgb(var(--accent-rgb) / 0.16), 0 5px 16px rgba(0, 0, 0, 0.55);
+  --card-glow-strong: 0 0 24px rgb(var(--accent-rgb) / 0.26), 0 9px 26px rgba(0, 0, 0, 0.62);
 
   /* signals */
   --bp: #f03b3b; /* breakpoints / danger */
@@ -83,6 +91,11 @@
   --kind-interface: #a855f7;
   --kind-trait: #14b8a6;
   --kind-enum: #f59e0b;
+  --card-a: #0f1729;
+  --card-b: #16213a;
+  --card-edge: var(--line);
+  --card-glow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --card-glow-strong: 0 6px 18px rgba(0, 0, 0, 0.4);
   --radius: 6px;
 }
 
@@ -197,31 +210,48 @@ body { background: var(--bg); color: var(--text); }
 .canvas-mode button.is-active { background: var(--accent); color: #fff; }
 
 /* Tree canvas — nested group + class nodes */
-.tree-group { width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,0.3); }
-.tree-group--folder { border-color: var(--line); background: rgba(255,255,255,0.015); }
-.tree-group--file { border-color: var(--line); background: rgba(0,0,0,0.36); }
-.tree-group__header { width: 100%; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 12px; }
-.tree-group__header:hover { background: rgba(255,255,255,0.05); }
-.tree-group__chevron { color: var(--muted); width: 10px; }
-.tree-group__icon { font-size: 11px; }
-.tree-group__name { font-weight: 600; font-family: ui-monospace, monospace; }
-.tree-group--folder .tree-group__name { color: var(--text); }
-.tree-group__count { margin-left: auto; color: var(--muted); font-size: 10px; background: var(--bg-3); border-radius: 8px; padding: 1px 7px; }
+/* Onyx cards: rounded, crimson-stroked, red-glowing. Shade alternates by depth
+   so each nesting level reads distinctly; the outermost carries the strong glow. */
+.tree-group, .tree-class {
+  width: 100%; height: 100%; border-radius: 11px;
+  border: 1px solid var(--card-edge);
+  box-shadow: var(--card-glow);
+}
+.tree-group[data-depth='0'], .tree-class[data-depth='0'] { background: var(--card-a); }
+.tree-group[data-depth='1'], .tree-class[data-depth='1'] { background: var(--card-b); }
+.tree-group.is-root { box-shadow: var(--card-glow-strong); }
 
-.tree-class { width: 100%; height: 100%; background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 7px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
-.tree-class__header { width: 100%; height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; }
+.tree-group__header { width: 100%; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 8px 0 11px; background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 12px; border-radius: 11px 11px 0 0; }
+.tree-group__header:hover { background: rgb(var(--accent-rgb) / 0.08); }
+.tree-group__chevron { color: var(--accent-bright); width: 10px; font-size: 9px; }
+.tree-group__icon { font-size: 10px; color: var(--muted); }
+.tree-group__name { font-weight: 600; font-family: ui-monospace, monospace; letter-spacing: 0.2px; }
+/* red circular count badge */
+.tree-group__count {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 10px; font-weight: 700; border-radius: 999px;
+  background: var(--accent); box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.5);
+}
+
+.tree-class { overflow: hidden; }
+.tree-class__header { width: 100%; height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 8px 0 11px; background: transparent; border: none; color: var(--text); cursor: pointer; border-radius: 11px 11px 0 0; }
 .tree-class__header:hover { background: rgb(var(--accent-rgb) / 0.1); }
-.tree-class__chevron { color: var(--muted); width: 10px; }
-.tree-class__kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; }
+.tree-class__chevron { color: var(--accent-bright); width: 10px; font-size: 9px; }
+.tree-class__kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
 .tree-class__name { font-weight: 700; font-size: 13px; }
-.tree-class__count { margin-left: auto; color: var(--muted); font-size: 10px; }
-.tree-class__members { border-top: 1px solid var(--line); }
-.tree-row { width: 100%; height: 19px; display: flex; align-items: center; gap: 4px; padding: 0 10px; background: transparent; border: none; color: var(--text); cursor: pointer; font-family: ui-monospace, monospace; font-size: 11px; text-align: left; }
+.tree-class__count {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 10px;
+}
+.tree-class__members { border-top: 1px solid var(--card-edge); }
+.tree-row { width: 100%; height: 19px; display: flex; align-items: center; gap: 4px; padding: 0 11px; background: transparent; border: none; color: var(--text); cursor: pointer; font-family: ui-monospace, monospace; font-size: 11px; text-align: left; }
 .tree-row:hover { background: rgb(var(--accent-rgb) / 0.14); }
 .tree-row .vis { color: var(--muted); width: 8px; }
 .tree-row .type { color: var(--muted); }
 .tree-row.waypoint-ok { color: var(--text); }
-.tree-row .wp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wp); margin-left: auto; }
+.tree-row .wp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wp); margin-left: auto; box-shadow: 0 0 6px var(--wp); }
 
 /* Reveal flash when zooming a member into the editor */
 .wp-reveal-flash { background: rgb(var(--accent-rgb) / 0.18); animation: wp-flash 1.4s ease-out; }
@@ -341,7 +371,7 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
 .brand__dot { box-shadow: var(--glow); }
 
 /* metallic, slightly sharper class boxes */
-.class-node, .tree-class { background: var(--metal), var(--bg-2); border-radius: 5px; }
+.class-node { background: var(--metal), var(--bg-2); border-radius: 5px; }
 .class-node { border-top-width: 2px; }
 
 /* primary action = the brighter imperial red with a subtle red glow */
@@ -365,9 +395,20 @@ button.primary:hover:not(:disabled) { filter: brightness(1.12); }
 /* connection chip: gold when up reads "powered/online" */
 .conn.is-up { box-shadow: 0 0 0 1px rgb(var(--ok-rgb) / 0.3); }
 
-/* React Flow chrome (minimap + controls) — dark/metallic to match */
-.react-flow__minimap { background-color: var(--bg-1) !important; border: 1px solid var(--line); border-radius: 4px; }
-.react-flow__controls { box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
-.react-flow__controls-button { background: var(--bg-3) !important; border-bottom: 1px solid var(--line) !important; }
-.react-flow__controls-button:hover { background: var(--bg-2) !important; }
+/* React Flow chrome — onyx, crimson edge, the signature red glow */
+.react-flow__minimap {
+  background-color: var(--card-a) !important;
+  border: 1px solid var(--card-edge); border-radius: 11px;
+  box-shadow: var(--card-glow);
+}
+/* zoom cluster -> a rounded vertical pill */
+.react-flow__controls {
+  border-radius: 999px; overflow: hidden;
+  border: 1px solid var(--card-edge); background: var(--card-a);
+  box-shadow: var(--card-glow);
+}
+.react-flow__controls-button { background: transparent !important; border: none !important; border-bottom: 1px solid rgb(var(--accent-rgb) / 0.2) !important; width: 30px; height: 30px; }
+.react-flow__controls-button:last-child { border-bottom: none !important; }
+.react-flow__controls-button:hover { background: rgb(var(--accent-rgb) / 0.14) !important; }
 .react-flow__controls-button svg { fill: var(--text); }
+.wp-control-magnify { font-size: 14px; color: var(--accent-bright); }

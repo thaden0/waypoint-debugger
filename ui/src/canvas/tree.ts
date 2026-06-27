@@ -23,9 +23,9 @@ export interface FolderEntry {
   files: FileEntry[];
 }
 
-const HEADER_H = 30;
-const PAD = 12;
-const GAP = 10;
+const HEADER_H = 32;
+const PAD = 15; // inset so nested cards (and their glow) have breathing room
+const GAP = 15;
 const CLASS_W = 248;
 const CLASS_HEAD = 38;
 const ROW_H = 19;
@@ -90,7 +90,7 @@ export function layoutTree(
 
   // Recursively size + emit. Returns the subtree's outer size. Positions are
   // relative to the parent; children are emitted after their parent.
-  const emitClass = (c: ClassEntry, parentId: string | undefined, x: number, y: number): { w: number; h: number } => {
+  const emitClass = (c: ClassEntry, parentId: string | undefined, x: number, y: number, depth: number): { w: number; h: number } => {
     const { w, h } = classSize(c);
     out.push({
       id: classId(c),
@@ -100,13 +100,13 @@ export function layoutTree(
       extent: parentId ? 'parent' : undefined,
       draggable: false,
       selectable: true,
-      data: { model: c.model, filePath: c.filePath, id: classId(c) },
+      data: { model: c.model, filePath: c.filePath, id: classId(c), depth },
       style: { width: w, height: h },
     });
     return { w, h };
   };
 
-  const emitFile = (file: FileEntry, parentId: string | undefined, x: number, y: number): { w: number; h: number } => {
+  const emitFile = (file: FileEntry, parentId: string | undefined, x: number, y: number, depth: number): { w: number; h: number } => {
     const id = `file:${file.path}`;
     const collapsed = collapsedGroups.has(id);
     const childIds: Array<{ c: ClassEntry }> = file.classes.map((c) => ({ c }));
@@ -118,7 +118,7 @@ export function layoutTree(
       extent: parentId ? 'parent' : undefined,
       draggable: false,
       selectable: false,
-      data: { kind: 'file', name: file.name, count: file.classes.length, id },
+      data: { kind: 'file', name: file.name, count: file.classes.length, id, depth },
       style: { width: 0, height: 0 },
     };
     out.push(node);
@@ -129,7 +129,7 @@ export function layoutTree(
     let cy = HEADER_H + PAD;
     let maxW = CLASS_W;
     for (const { c } of childIds) {
-      const s = emitClass(c, id, PAD, cy);
+      const s = emitClass(c, id, PAD, cy, depth + 1);
       cy += s.h + GAP;
       maxW = Math.max(maxW, s.w);
     }
@@ -139,7 +139,7 @@ export function layoutTree(
     return { w, h };
   };
 
-  const emitFolder = (folder: FolderEntry, parentId: string | undefined, x: number, y: number): { w: number; h: number } => {
+  const emitFolder = (folder: FolderEntry, parentId: string | undefined, x: number, y: number, depth: number): { w: number; h: number } => {
     const id = `dir:${folder.path}`;
     const collapsed = collapsedGroups.has(id);
     const count = folder.folders.length + folder.files.length;
@@ -151,7 +151,7 @@ export function layoutTree(
       extent: parentId ? 'parent' : undefined,
       draggable: false,
       selectable: false,
-      data: { kind: 'folder', name: folder.name, count, id },
+      data: { kind: 'folder', name: folder.name, count, id, depth },
       style: { width: 0, height: 0 },
     };
     out.push(node);
@@ -162,12 +162,12 @@ export function layoutTree(
     let cy = HEADER_H + PAD;
     let maxW = CLASS_W;
     for (const sub of folder.folders) {
-      const s = emitFolder(sub, id, PAD, cy);
+      const s = emitFolder(sub, id, PAD, cy, depth + 1);
       cy += s.h + GAP;
       maxW = Math.max(maxW, s.w);
     }
     for (const file of folder.files) {
-      const s = emitFile(file, id, PAD, cy);
+      const s = emitFile(file, id, PAD, cy, depth + 1);
       cy += s.h + GAP;
       maxW = Math.max(maxW, s.w);
     }
@@ -177,14 +177,14 @@ export function layoutTree(
     return { w, h };
   };
 
-  // Stack top-level folders/files in a row of columns.
+  // Stack top-level folders/files in a row of columns (depth 0 = outermost).
   let x = 0;
   for (const folder of root.folders) {
-    const s = emitFolder(folder, undefined, x, 0);
+    const s = emitFolder(folder, undefined, x, 0, 0);
     x += s.w + GAP * 3;
   }
   for (const file of root.files) {
-    const s = emitFile(file, undefined, x, 0);
+    const s = emitFile(file, undefined, x, 0, 0);
     x += s.w + GAP * 3;
   }
   return out;
