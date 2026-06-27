@@ -136,6 +136,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
         swaps: p.swaps ?? [],
         breakpoints: p.breakpoints ?? [],
         breakpointMode: p.breakpointMode ?? 'halt',
+        overrides: p.overrides ?? [],
       });
       return { ...result, ledger: recorder.ledgerPublic(), breakpoints: breakpoint.hits() };
     },

@@ -55,6 +55,7 @@ interface State {
   entryArgs: string;
   ledger: LedgerEntry[];
   breakpointHits: BreakpointHit[];
+  lastRunParams: Record<string, unknown> | null;
   lastRun: RunResult | null;
   lastInvoke: { seq: number; result: InvokeResult } | null;
   browserSrc: string | null;
@@ -81,6 +82,7 @@ interface State {
   setReqUri: (u: string) => void;
   startRun: () => Promise<void>;
   startRequest: () => Promise<void>;
+  continueWithOverrides: (line: number, overrides: Array<{ var: string; expression: string }>) => Promise<void>;
   replay: (seq: number, method: string) => Promise<void>;
   renderEntry: (method: string, uri: string) => Promise<void>;
 }
@@ -121,6 +123,7 @@ export const useStore = create<State>((set, get) => ({
   entryArgs: '[]',
   ledger: [],
   breakpointHits: [],
+  lastRunParams: null,
   lastRun: null,
   lastInvoke: null,
   browserSrc: null,
@@ -280,20 +283,46 @@ export const useStore = create<State>((set, get) => ({
       .filter((s) => s.path === openPath)
       .map((s) => ({ line: s.line, mode: 'replace', expression: s.expression }));
 
-    set({ mode: 'running', ledger: [], breakpointHits: [], log: [...get().log, `run ${(firstClass as { name: string }).name}::${entryMethod}`] });
+    const params = {
+      path: openPath,
+      class: (firstClass as { name: string }).name,
+      method: entryMethod,
+      args,
+      waypoints,
+      breakpoints,
+      breakpointMode: 'halt',
+      swaps: fileSwaps,
+    };
+    set({
+      mode: 'running',
+      ledger: [],
+      breakpointHits: [],
+      lastRunParams: params,
+      log: [...get().log, `run ${(firstClass as { name: string }).name}::${entryMethod}`],
+    });
 
     try {
-      const run = await rpc<RunResult>('run.slice', {
-        path: openPath,
-        class: (firstClass as { name: string }).name,
-        method: entryMethod,
-        args,
-        waypoints,
-        breakpoints,
-        breakpointMode: 'halt',
-        swaps: fileSwaps,
-      });
+      const run = await rpc<RunResult>('run.slice', params);
       set({ lastRun: run, ledger: run.ledger ?? get().ledger });
+    } catch (e) {
+      set({ lastRun: { ok: false, error: (e as Error).message } });
+    }
+  },
+
+  // "Change a variable on the fly": re-run the same unit slice with the edited
+  // values injected at the breakpoint line, and run to completion (no halt).
+  continueWithOverrides: async (line, overrides) => {
+    const base = get().lastRunParams;
+    if (!base) return;
+    set({ log: [...get().log, `continue with ${overrides.length} override(s)`] });
+    try {
+      const run = await rpc<RunResult>('run.slice', {
+        ...base,
+        waypoints: [],
+        breakpoints: [],
+        overrides: overrides.map((o) => ({ line, var: o.var, expression: o.expression })),
+      });
+      set({ lastRun: run });
     } catch (e) {
       set({ lastRun: { ok: false, error: (e as Error).message } });
     }

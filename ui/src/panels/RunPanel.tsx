@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
 import type { ClassModel } from '../types';
 
@@ -82,31 +83,78 @@ export function RunControls() {
       )}
 
       {lastRun?.paused && lastRun.breakpoint && (
-        <div className="paused">
-          <div className="paused__head">⏸ paused at <code>{lastRun.breakpoint.id}</code></div>
-          <ScopeView scope={lastRun.breakpoint.scope} />
-        </div>
+        <PausedScope id={lastRun.breakpoint.id} scope={lastRun.breakpoint.scope} />
       )}
     </div>
   );
 }
 
-function ScopeView({ scope }: { scope: Record<string, { tier: number; type: string; preview: unknown }> }) {
+type ScopeVar = { tier: number; type: string; preview: unknown };
+
+// The paused breakpoint scope. Scalar locals are editable — "Apply & continue"
+// re-runs the slice with the edited values injected at this line (change a
+// variable on the fly), then shows the new result.
+function PausedScope({ id, scope }: { id: string; scope: Record<string, ScopeVar> }) {
+  const continueWithOverrides = useStore((s) => s.continueWithOverrides);
   const entries = Object.entries(scope);
-  if (entries.length === 0) return <div className="muted">no locals in scope</div>;
+  const line = Number(id.split(':').pop());
+
+  // Initial expression for each editable (tier-1, non-$this) var.
+  const initial = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [name, v] of entries) {
+      if (name !== 'this' && v.tier === 1) m[name] = literalOf(v.preview, v.type);
+    }
+    return m;
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [edited, setEdited] = useState<Record<string, string>>(initial);
+  const dirty = Object.keys(initial).filter((k) => edited[k] !== initial[k]);
+
+  const apply = () => {
+    const overrides = dirty.map((name) => ({ var: name, expression: edited[name] }));
+    if (overrides.length) continueWithOverrides(line, overrides);
+  };
+
   return (
-    <table className="scope">
-      <tbody>
-        {entries.map(([name, v]) => (
-          <tr key={name} className={v.tier === 3 ? 'tier3' : ''}>
-            <td className="scope__name">{name}</td>
-            <td className="scope__type">{v.type}</td>
-            <td className="scope__val"><code>{previewText(v.preview)}</code></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="paused">
+      <div className="paused__head">⏸ paused at <code>{id}</code></div>
+      <table className="scope">
+        <tbody>
+          {entries.map(([name, v]) => {
+            const editable = name in initial;
+            return (
+              <tr key={name} className={v.tier === 3 ? 'tier3' : ''}>
+                <td className="scope__name">{name}</td>
+                <td className="scope__type">{v.type}</td>
+                <td className="scope__val">
+                  {editable ? (
+                    <input
+                      className={'scope__edit' + (edited[name] !== initial[name] ? ' is-dirty' : '')}
+                      value={edited[name] ?? ''}
+                      spellCheck={false}
+                      onChange={(e) => setEdited({ ...edited, [name]: e.target.value })}
+                    />
+                  ) : (
+                    <code>{previewText(v.preview)}</code>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <button className="primary continue-btn" disabled={dirty.length === 0} onClick={apply}>
+        ▶ Apply &amp; continue {dirty.length > 0 ? `(${dirty.length})` : ''}
+      </button>
+    </div>
   );
+}
+
+function literalOf(v: unknown, type: string): string {
+  if (v === null || v === undefined) return 'null';
+  if (type === 'string') return JSON.stringify(v); // "..." valid in PHP and JS
+  if (type === 'boolean') return v ? 'true' : 'false';
+  return String(v);
 }
 
 function previewText(p: unknown): string {

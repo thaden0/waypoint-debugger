@@ -224,6 +224,11 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
 .scope__type { color: var(--muted); white-space: nowrap; }
 .scope__val code { color: #fbbf24; word-break: break-all; }
 .scope tr.tier3 .scope__val code { color: var(--muted); }
+.scope__edit { width: 100%; background: var(--bg); color: #fbbf24; border: 1px solid var(--line); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; padding: 1px 4px; outline: none; }
+.scope__edit:focus { border-color: var(--accent); }
+.scope__edit.is-dirty { border-color: var(--ok); color: #86efac; }
+.continue-btn { margin-top: 8px; width: 100%; padding: 6px !important; font-size: 12px; }
+.continue-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Ledger timeline */
 .ledger { display: flex; flex-direction: column; gap: 6px; }

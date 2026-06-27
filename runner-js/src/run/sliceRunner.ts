@@ -3,6 +3,7 @@ import ts from 'typescript';
 import { recorder } from '../capture/recorder.js';
 import { breakpoint, BreakpointHalt } from '../debug/breakpoint.js';
 import { BreakpointInstrumenter } from '../debug/breakpointInstrumenter.js';
+import { OverrideInstrumenter, type OverrideSpec } from '../debug/overrideInstrumenter.js';
 import type { Host } from '../host/host.js';
 import { Swapper } from '../swap/swapper.js';
 import { WaypointInstrumenter } from '../waypoint/instrumenter.js';
@@ -24,6 +25,7 @@ export interface RunRequest {
   swaps?: SwapSpec[];
   breakpoints?: Array<{ line: number; id?: string }>;
   breakpointMode?: 'halt' | 'trace';
+  overrides?: OverrideSpec[];
 }
 
 export interface RunResult {
@@ -43,6 +45,9 @@ export class SliceRunner {
     const path = req.path ?? 'slice.ts';
 
     if (req.swaps?.length) source = new Swapper().apply(source, req.swaps, path).source;
+    // Overrides rewrite a variable's declaration initializer on the swap-only
+    // source so line numbers stay original (and `const` can be changed).
+    if (req.overrides?.length) source = new OverrideInstrumenter().apply(source, req.overrides, path).source;
     if (req.waypoints?.length) source = new WaypointInstrumenter().instrument(source, req.waypoints, path).source;
     if (req.breakpoints?.length) source = new BreakpointInstrumenter().instrument(source, req.breakpoints, path).source;
     breakpoint.reset();

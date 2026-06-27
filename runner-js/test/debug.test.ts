@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { breakpoint } from '../src/debug/breakpoint.js';
 import { BreakpointInstrumenter } from '../src/debug/breakpointInstrumenter.js';
+import { OverrideInstrumenter } from '../src/debug/overrideInstrumenter.js';
 import { BareHost } from '../src/host/host.js';
 import { SliceRunner } from '../src/run/sliceRunner.js';
 
@@ -63,5 +64,31 @@ describe('breakpoint run', () => {
     expect(result.paused).toBeFalsy();
     expect((result.result as { tax: number }).tax).toBe(1.55);
     expect(breakpoint.hits()).toHaveLength(1);
+  });
+});
+
+describe('variable override (change a const on the fly)', () => {
+  it('rewrites the declaration initializer and re-runs', () => {
+    const bpLine = lineOf('const tax = this.tax(subtotal)');
+    const r = new OverrideInstrumenter().apply(fixture, [{ line: bpLine, var: 'subtotal', expression: '100' }]);
+    expect(r.applied).toEqual([{ var: 'subtotal' }]);
+    expect(r.source).toContain('const subtotal = (100);');
+  });
+
+  it('changes the result through a re-run', async () => {
+    const bpLine = lineOf('const tax = this.tax(subtotal)');
+    const result = await new SliceRunner(new BareHost(here)).run({
+      source: fixture,
+      path: 'OrderService.ts',
+      class: 'OrderService',
+      method: 'process',
+      args: [[{ price: 10 }, { price: 5.5 }]],
+      overrides: [{ line: bpLine, var: 'subtotal', expression: '100' }],
+    });
+    expect(result.ok).toBe(true);
+    const out = result.result as { subtotal: number; tax: number; total: number };
+    expect(out.subtotal).toBe(100); // const subtotal rewritten to 100
+    expect(out.tax).toBe(10); // tax(100) = 100 * 0.1
+    expect(out.total).toBe(110);
   });
 });

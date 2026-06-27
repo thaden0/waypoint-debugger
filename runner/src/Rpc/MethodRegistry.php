@@ -183,6 +183,7 @@ final class MethodRegistry
                     'swaps' => $p['swaps'] ?? [],
                     'breakpoints' => $p['breakpoints'] ?? [],
                     'breakpointMode' => $p['breakpointMode'] ?? 'halt',
+                    'overrides' => $p['overrides'] ?? [],
                 ]);
                 $result['ledger'] = Recorder::ledger();
                 return $result;
