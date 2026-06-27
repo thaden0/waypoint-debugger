@@ -92,6 +92,10 @@ async function rpc<T>(method: string, params: Record<string, unknown> = {}): Pro
   return call<T>(method, params);
 }
 
+// Subscribe to server notifications exactly once, even though connect() may run
+// several times (StrictMode double-mount + the retry loop).
+let notificationsBound = false;
+
 export const useStore = create<State>((set, get) => ({
   runner: null,
   connected: false,
@@ -126,7 +130,9 @@ export const useStore = create<State>((set, get) => ({
     // Try the WS host first.
     const wsOk = await wsClient.connect();
     if (wsOk) {
-      wsClient.onNotification((method, params) => {
+      if (!notificationsBound) {
+        notificationsBound = true;
+        wsClient.onNotification((method, params) => {
         if (method === 'ledger.captured') {
           set({ ledger: [...get().ledger, params as unknown as LedgerEntry] });
           get().log.push(`captured ${(params as { id: string }).id}`);
@@ -134,7 +140,8 @@ export const useStore = create<State>((set, get) => ({
           set({ breakpointHits: [...get().breakpointHits, params as unknown as BreakpointHit] });
           get().log.push(`breakpoint ${(params as { id: string }).id}`);
         }
-      });
+        });
+      }
       const info = await wsClient.call<RunnerInfo>('runner.info');
       set({
         runner: info,

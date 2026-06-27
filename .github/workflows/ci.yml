@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  php-runner:
+    name: PHP runner (unit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+      - name: Install
+        run: composer install --no-interaction --no-progress
+      - name: Smoke
+        run: php bin/smoke.php
+      - name: Test
+        run: composer test
+
+  js-adapter:
+    name: JS adapter (vitest)
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true' # skips the real-container docker integration
+    defaults:
+      run:
+        working-directory: runner-js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+
+  ui-build:
+    name: UI build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm ci
+      - name: Build (tsc + vite)
+        run: npm run build

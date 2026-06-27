@@ -108,7 +108,13 @@ function CanvasInner() {
     >
       <Background gap={24} color="#1e293b" />
       <Controls />
-      <MiniMap pannable zoomable nodeColor="#3b82f6" maskColor="rgba(2,6,23,0.7)" />
+      <MiniMap
+        pannable
+        zoomable
+        nodeColor={(n) => (n.type === 'treeGroup' ? '#334155' : '#3b82f6')}
+        nodeStrokeColor="#0b1120"
+        maskColor="rgba(2,6,23,0.7)"
+      />
       <Panel position="top-left" className="canvas-mode">
         <button className={canvasMode === 'tree' ? 'is-active' : ''} onClick={() => setCanvasMode('tree')}>Tree</button>
         <button className={canvasMode === 'flat' ? 'is-active' : ''} onClick={() => setCanvasMode('flat')}>Flat</button>

@@ -9,7 +9,8 @@ import { Orchestrator } from '../src/docker/orchestrator.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, '../fixtures/docker/compose.full.yaml');
-const dockerUp = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+// Skip the real-container test in CI (kept fast/deterministic) — it runs locally.
+const dockerUp = !process.env.CI && spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 
 describe('compose parsing + classification', () => {
   it('classifies app / web / dependency', () => {
