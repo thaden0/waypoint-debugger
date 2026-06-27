@@ -424,4 +424,85 @@ These are polish gaps that accumulated while proving the engine — none are dee
 
 ---
 
+## 14. Proposed features (backlog — recorded, not yet built)
+
+Four directions to fold in when we get to them. Engineering notes + open questions
+for each; the probe (#4) explicitly needs a design conversation before building.
+
+### 14.1 Project-aware API console ("Postman, but it knows your code")
+
+A standard request builder (method / URL / headers / body / auth / saved requests /
+history / env vars) — table stakes. The differentiator is that we're *inside the
+project*, so the per-language adapter can **introspect the app's routes and
+auto-build the collection**, kept in sync as routes change.
+
+- **Laravel:** `php artisan route:list --json` (or the route registrar) yields
+  method + URI + name + `controller@action` + middleware + parameters. The adapter
+  emits a route-schema; the UI renders a navigable collection that re-introspects on
+  demand (or on a routes-file change).
+- **The real special sauce:** a request from the collection can be driven *through
+  the instrumented runtime* — i.e. it reuses `run.request`, so sending a request
+  also captures waypoints, hits breakpoints, and fills the ledger. Postman fused
+  with the debugger, not bolted beside it.
+- **Adapter contract:** add a `routes() → route schema` slot per language (Laravel:
+  route:list; JS: Express route table / Next.js app-router / NestJS metadata).
+- **Body/param inference (stretch):** Laravel `FormRequest` validation rules and
+  route-model-binding can suggest the request body shape and path params.
+- **Open:** how much of full Postman (collections, scripting, assertions) we mirror
+  vs. keep lean and lean on the code-integration advantage.
+
+### 14.2 Project app-file (shareable settings)
+
+A file committed in the project so a team **shares debugging setups**: swap
+definitions (mocked lines), waypoints, breakpoints, saved entries/args, run
+configs, route-collection tweaks.
+
+- **Shape:** a `.waypoint/` dir — `config.json` (shared, committed) + `local.json`
+  (personal, gitignored), mirroring the `.vscode/settings.json` vs `launch.json`
+  split. The host reads/writes it (fs.* already exists); the UI loads on project
+  open and persists changes.
+- **Anchor stability (important):** swaps/waypoints/breakpoints are line-based today,
+  which is brittle across edits. For a *persisted, shared* file they should anchor to
+  something stabler than a raw line number — e.g. `Class::method` + an
+  intra-method marker (nth statement, or a matched code fragment) — so they survive
+  edits and other people's line numbers. This is the same fragility we already touch
+  with multi-edit instrumentation; the app-file makes solving it worthwhile.
+
+### 14.3 Remote registry (later)
+
+A central store to: update the tool, **install optional modules/adapters** (extra
+language adapters, framework-specific route introspectors, community plugins), and
+**sync personal settings** across machines.
+
+- The per-language adapter contract already makes adapters packageable — an adapter
+  is just a package implementing the JSON-RPC method set. A registry serves adapter
+  manifests; the tool fetches/installs.
+- Personal-settings sync is account-based (cf. "Sign in with Vercel"-style OAuth):
+  store the `local.json`-equivalent remotely.
+- Deferred; noted here for shape so we don't preclude it (keep adapters cleanly
+  package-shaped, keep settings serializable).
+
+### 14.4 In-project probe (error-triggered state + logs) — NEEDS DISCUSSION
+
+The tool inserts a **probe** into the project (a service provider / middleware /
+exception hook) that connects back to Waypoint and, on a detected error, sends the
+request context, relevant state, recent queries, and logs.
+
+- **"State before the error" — the practical version:** continuous whole-app
+  checkpointing is too expensive, but we already capture at **waypoint boundaries**.
+  So keep a small **ring buffer of recent waypoint captures in-app** and, on an
+  exception, flush *the last captures before the error* + the error context. The
+  probe is essentially the always-on, error-triggered form of our on-demand ledger —
+  it reuses Recorder/the capture tier system.
+- **Transport:** probe dials out to the Waypoint host (or pushes over the existing
+  WS), so it works even when the runner isn't the one serving the request.
+- **Self add/remove + safety:** like the docker-runner stanza, the probe is
+  installed/removed by the tool; it must be guarded so it never ships to prod
+  unguarded (env-gated, explicit opt-in), and scoped in what state it captures.
+- **Open questions to settle first:** error-detection hook surface (exception
+  handler vs. a wrapper), what state is in-scope to capture (and PII/security),
+  push vs. pull, and how the ring-buffer depth trades memory for history.
+
+---
+
 *Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*
