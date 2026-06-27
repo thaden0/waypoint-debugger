@@ -24,7 +24,7 @@ export function TreeGroupNode({ data }: NodeProps) {
     >
       <button className="tree-group__header" onClick={() => toggleGroup(id)}>
         <span className="tree-group__chevron">{collapsed ? '▸' : '▾'}</span>
-        <span className="tree-group__icon">{kind === 'folder' ? '▣' : '▢'}</span>
+        <span className={`tree-group__icon tree-group__icon--${kind}`}>{kind === 'folder' ? '▰' : '▪'}</span>
         <span className="tree-group__name">{name}</span>
         {collapsed && <span className="tree-group__count">{count}</span>}
       </button>
