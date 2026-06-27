@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostFactory;
 use Waypoint\Runner\Rpc\Dispatcher;
 use Waypoint\Runner\Rpc\MethodRegistry;
@@ -25,6 +26,30 @@ use Waypoint\Runner\Rpc\WebSocketServer;
 $projectRoot = getenv('PROJECT_ROOT') ?: getcwd();
 $force = getenv('WP_HOST_DRIVER') ?: null;
 $wsPort = (int) (getenv('WP_WS_PORT') ?: 9778);
+
+// Docker mode: bring up the dependency services and point the app at them BEFORE
+// boot, so Laravel's config reads the host-mapped ports (DB_HOST -> 127.0.0.1).
+if (getenv('WP_DOCKER') === '1') {
+    $orch = Orchestrator::forRoot($projectRoot);
+    if ($orch !== null) {
+        fwrite(STDERR, "[host] docker mode: bringing up dependencies\n");
+        $up = $orch->up();
+        foreach ($up['env'] as $k => $v) {
+            putenv("{$k}={$v}");
+            $_ENV[$k] = $v;
+            $_SERVER[$k] = $v;
+        }
+        foreach ($up['warnings'] as $w) {
+            fwrite(STDERR, "[host]   warn: {$w}\n");
+        }
+        fwrite(STDERR, "[host]   reached: " . implode(', ', array_map(
+            static fn ($t) => "{$t['service']}@127.0.0.1:{$t['port']}",
+            $up['targets']
+        )) . "\n");
+    } else {
+        fwrite(STDERR, "[host] WP_DOCKER=1 but no compose file found\n");
+    }
+}
 
 $host = HostFactory::for($projectRoot, $force);
 fwrite(STDERR, "[host] driver=" . $host->describe()['driver'] . " root={$projectRoot}\n");

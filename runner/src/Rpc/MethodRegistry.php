@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waypoint\Runner\Rpc;
 
 use Waypoint\Runner\Capture\Recorder;
+use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostInterface;
 use Waypoint\Runner\Reconstruct\Invoker;
 use Waypoint\Runner\Run\RequestRunner;
@@ -82,6 +83,27 @@ final class MethodRegistry
             'ledger.reset' => function () {
                 Recorder::reset();
                 return ['ok' => true];
+            },
+
+            // Docker mode: lift the runner out of the container set, bring up the
+            // dependency services, and resolve how the host reaches them.
+            'docker.scan' => function () {
+                $orch = Orchestrator::forRoot($this->projectRoot);
+                return $orch === null ? ['available' => false] : ['available' => true] + $orch->scan();
+            },
+            'docker.up' => function (array $p) {
+                $orch = Orchestrator::forRoot($this->projectRoot);
+                if ($orch === null) {
+                    throw new RpcException(-32030, 'no compose file in project root');
+                }
+                return $orch->up($p['services'] ?? null);
+            },
+            'docker.down' => function () {
+                $orch = Orchestrator::forRoot($this->projectRoot);
+                if ($orch === null) {
+                    throw new RpcException(-32030, 'no compose file in project root');
+                }
+                return $orch->down();
             },
         ];
 
