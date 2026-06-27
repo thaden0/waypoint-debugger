@@ -364,4 +364,64 @@ Captured here so the v1 schema doesn't paint us into a corner.
 
 ---
 
+## 13. Implementation status (as built)
+
+The engine is well ahead of the UI. What works end-to-end, verified against a real
+Laravel 13 app and (for JS) a real Chrome:
+
+- **Both language adapters** (PHP via nikic/php-parser; JS/TS via the TS compiler
+  API) over one JSON-RPC/WebSocket wire — structure, scan, swap, waypoint, capture,
+  reconstruct+invoke, run.slice, run.request.
+- **Runner-as-host** (LaravelHost / BareHost / Node vm), **whole-request capture**
+  via include-time stream-wrapper instrumentation, **swap of live Eloquent** with
+  hydrated-model templates, **tier-2 Collection reconstruction + replay**.
+- **Docker mode** (compose parse/classify/reach, up deps, env overrides) — both
+  languages, proven against real redis.
+- **Breakpoints** (run-to-breakpoint with full scope capture; halt + trace) — both
+  languages; JS computes in-scope names statically (no `get_defined_vars()`).
+- **CDP / framework-state ledger** (JS): inject a Redux-store agent, time-travel by
+  state-injection — validated in real Chrome.
+- **Canvas**: tree mode (nested folder→file→class, collapsible, member click → editor
+  reveal) + flat mode (elk class diagram). **Ledger timeline**, **paused scope view**,
+  **live project-browser pane**.
+
+### Known UX gaps / backlog (found on first real use)
+
+These are polish gaps that accumulated while proving the engine — none are deep.
+
+- **No "open project" UI.** Project root is set only by the host's `PROJECT_ROOT`
+  env var; switching projects means restarting the host. Needs an in-UI open/switch.
+- **Editor is read-only.** Monaco is `readOnly: true`; the only editable surfaces are
+  the swap expression and run args. Live source editing is unbuilt (was always a
+  "noting it" item, not a v1 goal — but worth deciding).
+- **Explorer is a flat list, and redundant with the tree canvas.** The left rail is
+  a path-sorted list, not an IDE tree; the new tree canvas is the real navigator.
+  Reconcile: make the Explorer a proper tree, or fold it into the canvas.
+- **Flat-mode canvas inconsistency.** Flat mode swaps member detail by *zoom level*
+  (members appear at zoom ≥ 0.7) with **no clickable collapse**, while tree mode uses
+  explicit chevrons — so flat mode looks like its "arrows" aren't hooked up (there are
+  none). Also, **flat-mode member rows are not clickable** (only double-click the box
+  opens the file), whereas tree-mode rows click through to the editor. Make the two
+  modes consistent.
+- **Right rail reads as one section but is two.** "RUN SLICE" (run controls) and
+  "SLICE & SWAPS" (Problem code / Active swaps / Waypoints) are visually merged.
+  Separate them and clarify labels: *Problem code* = swap candidates (not warnings);
+  *Unit* = run one method in isolation; *Request* = drive a real HTTP route (Postman-
+  like) capturing across files.
+- **StrictMode double-subscribes notifications** → duplicate console log lines.
+- **Flat-mode minimap doesn't color group/class nodes.**
+
+### Functional gaps (not yet built)
+
+- **Request-mode replay.** Whole-request capture works, but replaying a captured
+  waypoint from a *subprocess* run needs blob pass-through (the subprocess's
+  reconstruction blobs don't survive its exit). Unit-mode replay works today.
+- **Interactive breakpoint continue / live variable edit.** Current model is
+  run-to-breakpoint + (continue = re-run, change-a-var = swap + re-run). True
+  pause/resume would need async run management in the host.
+- **CI / packaging.** No CI; three test suites (PHP unit, PHP docker-integration, JS
+  vitest) run manually.
+
+---
+
 *Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*
