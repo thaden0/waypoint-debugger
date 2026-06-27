@@ -9,6 +9,49 @@ import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
 
+function OpenProject() {
+  const runner = useStore((s) => s.runner);
+  const openProject = useStore((s) => s.openProject);
+  const connected = useStore((s) => s.connected);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Default the input to the current project root.
+  useEffect(() => {
+    if (runner?.projectRoot && !value) setValue(runner.projectRoot);
+  }, [runner?.projectRoot]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const open = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await openProject(value.trim());
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="open-project" title="Absolute path to a project root on the host machine">
+      <span className="open-project__icon">📂</span>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && open()}
+        placeholder="/path/to/project"
+        spellCheck={false}
+        disabled={!connected}
+      />
+      <button onClick={open} disabled={!connected || busy}>{busy ? '…' : 'Open'}</button>
+      {err && <span className="open-project__err" title={err}>!</span>}
+    </div>
+  );
+}
+
 export default function App() {
   const connect = useStore((s) => s.connect);
   const loadTree = useStore((s) => s.loadTree);
@@ -49,6 +92,9 @@ export default function App() {
         <div className="brand">
           <span className="brand__dot" /> Waypoint
         </div>
+
+        <OpenProject />
+
 
         <nav className="view-toggle">
           <button className={view === 'canvas' ? 'is-active' : ''} onClick={() => setView('canvas')}>
@@ -124,12 +170,18 @@ export default function App() {
           )}
         </main>
 
-        {/* Right rail: run controls + swap/waypoint workbench. */}
+        {/* Right rail: two distinct cards — run controls, then the swap/waypoint workbench. */}
         <aside className="rail rail--right">
-          <div className="rail__section-title">Run slice</div>
-          <RunControls />
-          <div className="rail__section-title">Slice &amp; swaps</div>
-          <SwapPanel />
+          <section className="rail-card">
+            <div className="rail-card__title">Run</div>
+            <div className="rail-card__hint">Unit = one method in isolation · Request = a real HTTP route (Postman-like)</div>
+            <RunControls />
+          </section>
+          <section className="rail-card">
+            <div className="rail-card__title">Swaps &amp; waypoints</div>
+            <div className="rail-card__hint">“Problem code” = real I/O calls you can mock with fake data</div>
+            <SwapPanel />
+          </section>
         </aside>
       </div>
 

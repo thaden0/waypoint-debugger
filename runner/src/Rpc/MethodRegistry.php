@@ -29,15 +29,25 @@ final class MethodRegistry
     private WaypointInstrumenter $waypoints;
     private string $projectRoot;
     private ?HostInterface $host;
+    private bool $manageHost;
 
     public function __construct(string $projectRoot, ?HostInterface $host = null)
     {
         $this->projectRoot = rtrim($projectRoot, '/');
         $this->host = $host;
+        $this->manageHost = $host !== null; // resident host process re-points its host
         $this->structure = new StructureExtractor();
         $this->scanner = new ProblemScanner();
         $this->swapper = new Swapper();
         $this->waypoints = new WaypointInstrumenter();
+    }
+
+    private function requireHost(): HostInterface
+    {
+        if ($this->host === null) {
+            throw new RpcException(-32040, 'no host attached (static-analysis server)');
+        }
+        return $this->host;
     }
 
     /** @return array<string,callable> */
@@ -85,6 +95,26 @@ final class MethodRegistry
                 return ['ok' => true];
             },
 
+            // Switch the project the runner serves — re-points browsing / scan /
+            // swap / run.request immediately, and re-creates the host so a fresh
+            // single-project session runs against the new root.
+            'project.open' => function (array $p) {
+                $root = rtrim((string) ($p['root'] ?? ''), '/');
+                if ($root === '' || !is_dir($root)) {
+                    throw new RpcException(-32041, "not a directory: {$root}");
+                }
+                $this->projectRoot = $root;
+                Recorder::reset();
+                if ($this->manageHost) {
+                    $this->host = \Waypoint\Runner\Host\HostFactory::for($root, getenv('WP_HOST_DRIVER') ?: null);
+                }
+                return [
+                    'ok' => true,
+                    'projectRoot' => $this->projectRoot,
+                    'host' => $this->host?->describe(),
+                ];
+            },
+
             // Docker mode: lift the runner out of the container set, bring up the
             // dependency services, and resolve how the host reaches them.
             'docker.scan' => function () {
@@ -107,28 +137,29 @@ final class MethodRegistry
             },
         ];
 
-        if ($this->host !== null) {
-            $methods += $this->hostMethods($this->host);
+        if ($this->manageHost) {
+            $methods += $this->hostMethods();
         }
 
         return $methods;
     }
 
     /**
-     * Live-run methods, available only when a host is attached (the resident
-     * bin/host.php process). The HTTP server runs host-less for static analysis.
+     * Live-run methods, present on the resident host process. They resolve the
+     * host at call time (via requireHost) so project.open can re-point it.
      *
      * @return array<string,callable>
      */
-    private function hostMethods(HostInterface $host): array
+    private function hostMethods(): array
     {
         return [
-            'host.describe' => fn () => $host->describe(),
-            'host.boot' => function () use ($host) {
+            'host.describe' => fn () => $this->requireHost()->describe(),
+            'host.boot' => function () {
+                $host = $this->requireHost();
                 $host->boot();
                 return $host->describe();
             },
-            'host.entry' => fn (array $p) => $host->renderEntry(
+            'host.entry' => fn (array $p) => $this->requireHost()->renderEntry(
                 $p['method'] ?? 'GET',
                 $p['uri'] ?? '/',
                 $p['params'] ?? []
@@ -136,7 +167,8 @@ final class MethodRegistry
 
             // Drive a slice: instrument (waypoints + swaps), load, run the entry,
             // populate the ledger. Captures stream over the Notifier as they happen.
-            'run.slice' => function (array $p) use ($host) {
+            'run.slice' => function (array $p) {
+                $host = $this->requireHost();
                 Recorder::reset();
                 $host->boot();
                 $runner = new SliceRunner($host);
@@ -178,12 +210,12 @@ final class MethodRegistry
             },
 
             // Reconstruct + invoke from a captured (or authored) ledger entry.
-            'run.invoke' => function (array $p) use ($host) {
+            'run.invoke' => function (array $p) {
                 $entry = isset($p['entry']) ? $p['entry'] : Recorder::entry((int) ($p['seq'] ?? -1));
                 if ($entry === null) {
                     throw new RpcException(-32010, 'no ledger entry for seq ' . ($p['seq'] ?? '?'));
                 }
-                [$begin, $commit, $rollback] = $host->transactionHooks();
+                [$begin, $commit, $rollback] = $this->requireHost()->transactionHooks();
                 $invoker = new Invoker($begin, $commit, $rollback);
                 return $invoker->invoke($entry, $p['method'], $p['mode'] ?? 'peek');
             },

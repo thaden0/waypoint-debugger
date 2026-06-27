@@ -62,6 +62,7 @@ interface State {
 
   connect: () => Promise<void>;
   loadTree: () => Promise<void>;
+  openProject: (root: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
   toggleMarker: (line: number, kind: MarkerKind) => void;
   addSwap: (swap: SwapSite) => void;
@@ -156,6 +157,32 @@ export const useStore = create<State>((set, get) => ({
   loadTree: async () => {
     const tree = await rpc<TreeModel>('structure.tree', { root: '.' });
     set({ tree });
+  },
+
+  openProject: async (root: string) => {
+    const res = await rpc<{ ok: boolean; projectRoot: string; host?: { driver: string; app: string } }>('project.open', { root });
+    if (!res.ok) return;
+    const info = await rpc<RunnerInfo>('runner.info');
+    set({
+      runner: info,
+      hasHost: (info.capabilities ?? []).includes('run'),
+      // reset the workspace for the new project
+      openPath: null,
+      source: '',
+      structure: null,
+      problems: [],
+      markers: [],
+      swaps: [],
+      ledger: [],
+      breakpointHits: [],
+      lastRun: null,
+      lastInvoke: null,
+      browserSrc: null,
+      collapsedGroups: [],
+      expandedClasses: [],
+      mode: 'idle',
+    });
+    await get().loadTree();
   },
 
   openFile: async (path: string) => {

@@ -11,12 +11,12 @@ export interface ClassEntry {
   model: ClassModel;
   filePath: string;
 }
-interface FileEntry {
+export interface FileEntry {
   name: string;
   path: string;
   classes: ClassEntry[];
 }
-interface FolderEntry {
+export interface FolderEntry {
   name: string;
   path: string;
   folders: FolderEntry[];

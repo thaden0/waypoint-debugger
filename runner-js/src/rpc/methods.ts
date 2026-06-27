@@ -1,11 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { recorder } from '../capture/recorder.js';
 import { CdpTransport } from '../cdp/cdpTransport.js';
 import { breakpoint } from '../debug/breakpoint.js';
 import { Orchestrator } from '../docker/orchestrator.js';
-import type { Host } from '../host/host.js';
+import { BareHost, type Host } from '../host/host.js';
 import { Invoker } from '../reconstruct/invoker.js';
 import { SliceRunner } from '../run/sliceRunner.js';
 import { StructureExtractor } from '../structure/extractor.js';
@@ -27,7 +27,9 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
   const scanner = new ProblemScanner();
   const swapper = new Swapper();
   const waypoints = new WaypointInstrumenter();
-  const root = path.resolve(projectRoot);
+  // root + host are mutable so project.open can re-point the served project.
+  let root = path.resolve(projectRoot);
+  let currentHost = host;
 
   // CDP transport is created on attach (it connects to an external browser).
   let cdp: CdpTransport | null = null;
@@ -55,9 +57,20 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       language: 'js',
       runtime: `node ${process.version}`,
       projectRoot: root,
-      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp', 'docker'],
-      host: host.describe(),
+      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp', 'docker', 'project'],
+      host: currentHost.describe(),
     }),
+
+    'project.open': (p: { root: string }) => {
+      const next = path.resolve(p.root ?? '');
+      if (!next || !existsSync(next) || !statSync(next).isDirectory()) {
+        throw rpcError(-32041, `not a directory: ${p.root}`);
+      }
+      root = next;
+      recorder.reset();
+      currentHost = new BareHost(root);
+      return { ok: true, projectRoot: root, host: currentHost.describe() };
+    },
 
     'docker.scan': () => {
       const orch = Orchestrator.forRoot(root);
@@ -100,19 +113,19 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       return { ok: true };
     },
 
-    'host.describe': () => host.describe(),
+    'host.describe': () => currentHost.describe(),
     'host.boot': () => {
-      host.boot();
-      return host.describe();
+      currentHost.boot();
+      return currentHost.describe();
     },
     'host.entry': (p: { method?: string; uri?: string; params?: Record<string, unknown> }) =>
-      host.renderEntry(p.method ?? 'GET', p.uri ?? '/', p.params ?? {}),
+      currentHost.renderEntry(p.method ?? 'GET', p.uri ?? '/', p.params ?? {}),
 
     'run.slice': async (p: any) => {
       recorder.reset();
       breakpoint.reset();
-      host.boot();
-      const result = await new SliceRunner(host).run({
+      currentHost.boot();
+      const result = await new SliceRunner(currentHost).run({
         source: p.source ?? read(p.path),
         path: p.path,
         class: p.class,
@@ -128,7 +141,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
     },
 
     'run.invoke': async (p: { seq: number; method: string; mode?: 'peek' | 'destructive' }) =>
-      new Invoker(host).invokeSeq(p.seq, p.method, p.mode ?? 'peek'),
+      new Invoker(currentHost).invokeSeq(p.seq, p.method, p.mode ?? 'peek'),
 
     // CDP / framework-state ledger — the browser side. attach to a running page,
     // then snapshot/inject its framework state. Replay is state-injection.

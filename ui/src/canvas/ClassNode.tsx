@@ -27,6 +27,7 @@ export function ClassNode({ data }: NodeProps) {
   const { model, filePath } = data as ClassNodeData;
   const zoom = useFlowStore((s) => s.transform[2]);
   const openFile = useStore((s) => s.openFile);
+  const revealMember = useStore((s) => s.revealMember);
   const accent = KIND_COLOR[model.kind] ?? '#64748b';
   const detailed = zoom >= SHOW_MEMBERS_ZOOM;
 
@@ -51,7 +52,7 @@ export function ClassNode({ data }: NodeProps) {
           {props.length > 0 && (
             <ul className="class-node__members">
               {props.map((p) => (
-                <li key={'p' + p.name}>
+                <li key={'p' + p.name} className="clickable" onClick={() => revealMember(filePath, p.line.start)}>
                   <span className="vis">{VIS_GLYPH[p.visibility]}</span> {p.name}
                   {p.type ? <span className="type">: {p.type}</span> : null}
                 </li>
@@ -60,7 +61,11 @@ export function ClassNode({ data }: NodeProps) {
           )}
           <ul className="class-node__members">
             {methods.map((m) => (
-              <li key={'m' + m.name} className={m.waypointEligible ? 'waypoint-ok' : ''}>
+              <li
+                key={'m' + m.name}
+                className={'clickable' + (m.waypointEligible ? ' waypoint-ok' : '')}
+                onClick={() => revealMember(filePath, m.line.start)}
+              >
                 <span className="vis">{VIS_GLYPH[m.visibility]}</span> {m.name}()
                 {m.waypointEligible && <span className="wp-dot" title="valid waypoint anchor" />}
               </li>
