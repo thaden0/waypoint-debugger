@@ -700,6 +700,34 @@ module** and launches its runner from the manifest's `runner.cmd` (default `php`
 runs `runner-js`'s WS host), rather than a hardcoded command. `role: backend|frontend|both`
 is carried on language manifests for the eventual split-screen wiring.
 
+## 18. Front + back debugging (decisions + status)
+
+Debug a backend and frontend together (e.g. Laravel + Inertia: one repo, two runtimes).
+Decisions: FE runner = JS analysis **+** CDP to the live browser; **two direct WS
+connections** (UI → backend + UI → frontend), routed by capability, no broker; one
+project root with `role:both` launches both runners; network capture filtered to
+XHR/Fetch by default; **World-B correlation** — route the live FE's API calls *through*
+the instrumented host so each call links to the exact BE trace (exact by construction),
+not a URL/time guess.
+
+**Built:**
+- **Connection spine** (`rpc/runners.ts`): the UI holds a connection per runner; the
+  existing `wsClient` is the primary `backend`, a `frontend` runner is probed on ws+1.
+  `runner.info` advertises `role`; `forMethod` routes `cdp.*` to the frontend. Topbar
+  shows a chip per runner. Single-runner is unchanged.
+- **Launcher dual-launch:** `up` starts a JS frontend runner on ws+1 when the project has
+  a `package.json` (or `--frontend`), unless `--no-frontend`.
+- **CDP network capture:** the JS runner captures `Network.*` from the live browser
+  (merged by requestId), filtered to XHR/Fetch; `cdp.attach` auto-discovers the page
+  target from an `http://` CDP base; agent injection is best-effort.
+- **Tabbed dock:** `DockPanel` — Variables (BE) · Console · Network (FE), the network tab
+  shown when a cdp-capable frontend runner is connected; live-polls `cdp.network`.
+
+**Remaining:** World-B correlation itself (route live FE traffic through the host and link
+each network row to the BE waypoint trace it caused); per-runner FE/BE *analysis* panes
+(today the main views are backend-centric); FE variable/state tab (CDP framework-state)
+beside Network.
+
 ---
 
 *Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*
