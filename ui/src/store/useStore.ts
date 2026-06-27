@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { call, ping } from '../rpc/client';
 import { wsClient } from '../rpc/ws';
+import { runners, FRONTEND_WS_URL, type RunnerDescriptor } from '../rpc/runners';
 import type {
   BreakpointHit,
   FileModel,
@@ -19,6 +20,7 @@ import type {
 
 interface RunnerInfo {
   language: string;
+  role?: string;
   phpVersion: string;
   projectRoot: string;
   capabilities?: string[];
@@ -53,6 +55,7 @@ export interface Experiment {
 interface State {
   runner: RunnerInfo | null;
   connected: boolean;
+  runners: RunnerDescriptor[];
   transport: Transport;
   hasHost: boolean;
 
@@ -206,6 +209,7 @@ let notificationsBound = false;
 export const useStore = create<State>((set, get) => ({
   runner: null,
   connected: false,
+  runners: [],
   transport: 'none',
   hasHost: false,
   tree: null,
@@ -273,11 +277,17 @@ export const useStore = create<State>((set, get) => ({
         });
       }
       const info = await wsClient.call<RunnerInfo>('runner.info');
+      // Register the backend in the runner registry, then probe for a frontend
+      // runner (launched on ws+1 in role:both). Both surface in the topbar; the
+      // single-runner case just yields one.
+      const backend = await runners.connect('backend').catch(() => null);
+      const fe = await runners.connect('frontend', FRONTEND_WS_URL).catch(() => null);
       set({
         runner: info,
         connected: true,
         transport: 'ws',
         hasHost: (info.capabilities ?? []).includes('run'),
+        runners: [backend, fe].filter(Boolean) as RunnerDescriptor[],
       });
       return;
     }

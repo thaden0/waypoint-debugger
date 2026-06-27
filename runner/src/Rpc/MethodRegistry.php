@@ -86,6 +86,7 @@ final class MethodRegistry
         $methods = [
             'runner.info' => fn () => [
                 'language' => 'php',
+                'role' => 'backend',
                 'phpVersion' => PHP_VERSION,
                 'projectRoot' => $this->projectRoot,
                 'capabilities' => array_merge(

@@ -26,6 +26,7 @@ export default function App() {
   const setMode = useStore((s) => s.setMode);
   const openPath = useStore((s) => s.openPath);
   const openSettings = useStore((s) => s.openSettings);
+  const runnersList = useStore((s) => s.runners);
 
   const [placing, setPlacing] = useState<MarkerKind>('breakpoint');
 
@@ -99,6 +100,16 @@ export default function App() {
             </button>
           )}
         </div>
+
+        {runnersList.length > 0 && (
+          <div className="runners">
+            {runnersList.map((r) => (
+              <span key={r.id} className={'runner-chip role-' + r.role} title={`${r.language} runner · ${r.capabilities.length} caps`}>
+                {r.language}<span className="runner-chip__role">{r.role}</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className={'conn ' + (connected ? 'is-up' : 'is-down')} title={`transport: ${transport}`}>
           {connected

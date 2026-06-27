@@ -55,6 +55,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
   return {
     'runner.info': () => ({
       language: 'js',
+      role: 'both',
       runtime: `node ${process.version}`,
       projectRoot: root,
       capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'api', 'host', 'run', 'invoke', 'cdp', 'docker', 'project'],

@@ -848,3 +848,12 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .provision__btn:disabled { opacity: 0.6; cursor: default; }
 .provision__x { margin-left: auto; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }
 .provision__x:hover { color: var(--text); }
+
+/* Multi-runner chips (topbar) */
+.runners { display: flex; align-items: center; gap: 5px; }
+.runner-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; padding: 2px 7px; border-radius: 10px; background: var(--bg-3); border: 1px solid var(--line); color: var(--text); text-transform: uppercase; letter-spacing: 0.03em; }
+.runner-chip__role { font-size: 8px; color: var(--muted); }
+.runner-chip.role-backend { border-color: rgb(var(--accent-rgb) / 0.4); }
+.runner-chip.role-backend .runner-chip__role { color: var(--accent-bright); }
+.runner-chip.role-frontend, .runner-chip.role-both { border-color: rgb(var(--brass-rgb) / 0.4); }
+.runner-chip.role-frontend .runner-chip__role, .runner-chip.role-both .runner-chip__role { color: var(--brass); }

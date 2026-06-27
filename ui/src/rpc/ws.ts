@@ -7,9 +7,11 @@
 type Pending = { resolve: (v: unknown) => void; reject: (e: unknown) => void };
 type NotificationHandler = (method: string, params: Record<string, unknown>) => void;
 
-const WS_URL = `ws://${location.hostname}:9778`;
+export const DEFAULT_WS_URL = `ws://${location.hostname}:9778`;
 
 export class WsClient {
+  constructor(private url: string = DEFAULT_WS_URL) {}
+
   private ws: WebSocket | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
@@ -27,7 +29,7 @@ export class WsClient {
     this.connecting = new Promise<boolean>((resolve) => {
       let ws: WebSocket;
       try {
-        ws = new WebSocket(WS_URL);
+        ws = new WebSocket(this.url);
       } catch {
         this.status = 'closed';
         this.connecting = null;
