@@ -106,14 +106,14 @@ function CanvasInner() {
       fitView
       proOptions={{ hideAttribution: true }}
     >
-      <Background gap={24} color="#1e293b" />
+      <Background gap={24} color="#1b1820" />
       <Controls />
       <MiniMap
         pannable
         zoomable
-        nodeColor={(n) => (n.type === 'treeGroup' ? '#334155' : '#3b82f6')}
-        nodeStrokeColor="#0b1120"
-        maskColor="rgba(2,6,23,0.7)"
+        nodeColor={(n) => (n.type === 'treeGroup' ? '#3c2a2f' : '#a81d25')}
+        nodeStrokeColor="#08080a"
+        maskColor="rgba(0,0,0,0.72)"
       />
       <Panel position="top-left" className="canvas-mode">
         <button className={canvasMode === 'tree' ? 'is-active' : ''} onClick={() => setCanvasMode('tree')}>Tree</button>

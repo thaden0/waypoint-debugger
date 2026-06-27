@@ -9,7 +9,7 @@ interface TreeClassData extends Record<string, unknown> {
 }
 
 const KIND_COLOR: Record<string, string> = {
-  class: '#3b82f6', interface: '#a855f7', trait: '#14b8a6', enum: '#f59e0b',
+  class: 'var(--kind-class)', interface: 'var(--kind-interface)', trait: 'var(--kind-trait)', enum: 'var(--kind-enum)',
 };
 const VIS_GLYPH: Record<string, string> = { public: '+', protected: '#', private: '-' };
 
