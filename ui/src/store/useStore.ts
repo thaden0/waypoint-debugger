@@ -34,6 +34,7 @@ interface State {
   tree: TreeModel | null;
   openPath: string | null;
   source: string;
+  savedSource: string; // last-persisted content; source !== savedSource => dirty
   structure: FileModel | null;
   problems: Problem[];
 
@@ -71,6 +72,8 @@ interface State {
   loadTree: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  setEditedSource: (source: string) => void;
+  saveFile: () => Promise<void>;
   toggleMarker: (line: number, kind: MarkerKind) => void;
   addSwap: (swap: SwapSite) => void;
   removeSwap: (path: string, line: number) => void;
@@ -114,6 +117,7 @@ export const useStore = create<State>((set, get) => ({
   tree: null,
   openPath: null,
   source: '',
+  savedSource: '',
   structure: null,
   problems: [],
   mode: 'idle',
@@ -231,7 +235,22 @@ export const useStore = create<State>((set, get) => ({
         break;
       }
     }
-    set({ openPath: path, source, structure, problems, view: 'code', entryMethod });
+    set({ openPath: path, source, savedSource: source, structure, problems, view: 'code', entryMethod });
+  },
+
+  setEditedSource: (source) => set({ source }),
+
+  // Persist the editor content, then re-derive structure + problems from the
+  // saved source (line-based markers/eligibility track the new code).
+  saveFile: async () => {
+    const { openPath, source } = get();
+    if (!openPath) return;
+    await rpc('fs.write', { path: openPath, source });
+    const [structure, { problems }] = await Promise.all([
+      rpc<FileModel>('structure.file', { path: openPath, source }),
+      rpc<{ problems: Problem[] }>('swap.scan', { path: openPath, source }),
+    ]);
+    set({ savedSource: source, structure, problems, log: [...get().log, `saved ${openPath}`] });
   },
 
   toggleMarker: (line, kind) => {
@@ -305,6 +324,7 @@ export const useStore = create<State>((set, get) => ({
 
     const params = {
       path: openPath,
+      source: get().source, // run the live editor content (test edits before saving)
       class: (firstClass as { name: string }).name,
       method: entryMethod,
       args,
@@ -351,6 +371,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       await rpc('run.debug.start', {
         path: openPath,
+        source: get().source,
         class: (firstClass as { name: string }).name,
         method: entryMethod,
         args,

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { recorder } from '../capture/recorder.js';
@@ -88,6 +88,14 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
     },
 
     'fs.read': (p: { path: string }) => ({ path: p.path, source: read(p.path) }),
+    'fs.write': (p: { path: string; source?: string }) => {
+      try {
+        writeFileSync(resolve(p.path), p.source ?? '');
+      } catch {
+        throw rpcError(-32003, `cannot write file: ${p.path}`);
+      }
+      return { ok: true, path: p.path };
+    },
     'fs.list': async () => ({ root, paths: await listSources(root) }),
 
     'structure.file': (p: { path: string; source?: string }) =>

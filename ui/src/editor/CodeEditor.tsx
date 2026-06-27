@@ -28,6 +28,9 @@ export function CodeEditor({ placing }: Props) {
   const decorationsRef = useRef<string[]>([]);
 
   const source = useStore((s) => s.source);
+  const savedSource = useStore((s) => s.savedSource);
+  const setEditedSource = useStore((s) => s.setEditedSource);
+  const saveFile = useStore((s) => s.saveFile);
   const openPath = useStore((s) => s.openPath);
   const structure = useStore((s) => s.structure);
   const problems = useStore((s) => s.problems);
@@ -59,6 +62,11 @@ export function CodeEditor({ placing }: Props) {
         return;
       }
       toggleMarker(line, placing);
+    });
+
+    // Ctrl/Cmd+S saves the edited source to disk.
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      void useStore.getState().saveFile();
     });
   }
 
@@ -130,23 +138,36 @@ export function CodeEditor({ placing }: Props) {
     return <div className="editor-empty">Open a file from the explorer or double-click a class in the canvas.</div>;
   }
 
+  const dirty = source !== savedSource;
+
   return (
-    <Editor
-      height="100%"
-      theme="vs-dark"
-      path={openPath}
-      language={languageFor(openPath)}
-      value={source}
-      onMount={onMount}
-      options={{
-        readOnly: true,
-        glyphMargin: true,
-        minimap: { enabled: false },
-        fontSize: 13,
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-        renderLineHighlight: 'all',
-      }}
-    />
+    <div className="code-pane">
+      <div className="code-pane__bar">
+        <span className="code-pane__path">{openPath}{dirty && <span className="code-pane__dirty" title="unsaved changes"> ●</span>}</span>
+        <button className="code-pane__save" disabled={!dirty} onClick={() => saveFile()} title="Save (⌘/Ctrl+S)">
+          {dirty ? 'Save' : 'Saved'}
+        </button>
+      </div>
+      <div className="code-pane__editor">
+        <Editor
+          height="100%"
+          theme="vs-dark"
+          path={openPath}
+          language={languageFor(openPath)}
+          value={source}
+          onMount={onMount}
+          onChange={(value) => setEditedSource(value ?? '')}
+          options={{
+            readOnly: false,
+            glyphMargin: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            renderLineHighlight: 'all',
+          }}
+        />
+      </div>
+    </div>
   );
 }

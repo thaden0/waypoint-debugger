@@ -69,6 +69,13 @@ final class MethodRegistry
 
             'fs.list' => fn (array $p) => $this->fsList($p['glob'] ?? '**/*.php'),
             'fs.read' => fn (array $p) => ['path' => $p['path'], 'source' => $this->readProjectFile($p['path'])],
+            'fs.write' => function (array $p) {
+                $full = $this->resolve($p['path']);
+                if (@file_put_contents($full, (string) ($p['source'] ?? '')) === false) {
+                    throw new RpcException(-32003, "cannot write file: {$p['path']}");
+                }
+                return ['ok' => true, 'path' => $p['path']];
+            },
 
             'structure.file' => fn (array $p) => $this->structure->extractFile(
                 $p['path'],

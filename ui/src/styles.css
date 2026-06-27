@@ -480,3 +480,13 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 /* current execution line (paused) */
 .wp-current-line { background: rgb(var(--brass-rgb) / 0.14); }
 .wp-current-glyph { background: var(--brass); border-radius: 2px; width: 4px !important; margin-left: 8px; box-shadow: 0 0 8px var(--brass); }
+
+/* Code pane — editable, with a save bar */
+.code-pane { display: flex; flex-direction: column; height: 100%; }
+.code-pane__bar { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: linear-gradient(180deg, #14111a, #0e0b11); border-bottom: 1px solid var(--line-strong); flex: 0 0 auto; }
+.code-pane__path { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+.code-pane__dirty { color: var(--brass-bright); }
+.code-pane__save { margin-left: auto; background: var(--bg-3); border: 1px solid var(--line-strong); color: var(--text); border-radius: 5px; padding: 2px 12px; font-size: 11px; cursor: pointer; }
+.code-pane__save:not(:disabled) { background: var(--cta-grad); border-color: var(--cta); color: #fff; box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.4); }
+.code-pane__save:disabled { color: var(--muted); cursor: default; }
+.code-pane__editor { flex: 1; min-height: 0; }
