@@ -85,29 +85,36 @@ model already carries node-kinds (class / function / module / method) for it.
 
 ## Quickstart
 
-Requirements: PHP 8.2+, Composer, Node 20+.
+Requirements: PHP 8.2+, Composer, Node 18+.
+
+The one-file launcher checks prerequisites, installs everything, and starts the
+host + UI — same command on Debian / Linux / macOS / Windows:
 
 ```bash
-# 1. Runner core
-cd runner
-composer install
-php bin/smoke.php          # 19/19 green — exercises the static core pipeline
-composer test             # 13 PHPUnit tests incl. live slice run + replay + WS
+node waypoint.mjs up --project /path/to/laravel
+```
 
-# 2. Start the resident host (WebSocket, full run capability)
+It runs `doctor` (verify PHP/Node/Composer), installs runner + UI deps if missing,
+starts the resident host (ws://127.0.0.1:9778) + HTTP fallback (:9777) + the UI
+(http://localhost:5180), and opens the browser. `Ctrl-C` stops everything.
+
+```bash
+node waypoint.mjs doctor     # just check prerequisites
+node waypoint.mjs up         # no --project → bundled fixtures
+node waypoint.mjs up --build # serve a production UI build instead of the dev server
+```
+
+<details><summary>Manual steps (if you prefer)</summary>
+
+```bash
+cd runner && composer install
+php bin/smoke.php          # exercises the static core pipeline
+composer test             # PHPUnit incl. live slice run + replay + WS
 PROJECT_ROOT="$PWD/tests/fixtures" php bin/host.php    # ws://127.0.0.1:9778
-
-# 3. UI (separate terminal)
-cd ui
-npm install
-npm run dev               # http://localhost:5180
+cd ../ui && npm install && npm run dev                 # http://localhost:5180
+# …or ./dev.sh /path/to/laravel  (bash-only)
 ```
-
-Or start everything at once:
-
-```bash
-./dev.sh /path/to/laravel    # host + HTTP fallback + UI
-```
+</details>
 
 Point `PROJECT_ROOT` at any Laravel app to explore it. The UI loads the class
 diagram, opens files in the editor, auto-highlights swap candidates, lets you
