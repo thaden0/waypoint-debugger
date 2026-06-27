@@ -147,6 +147,13 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
 .run-result.err { background: rgba(239,68,68,0.12); color: #fca5a5; }
 .run-result code, .ledger code { font-family: ui-monospace, monospace; }
 
+.mode-switch { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.mode-switch button { flex: 1; background: var(--bg-2); border: none; color: var(--muted); padding: 5px; font-size: 11px; cursor: pointer; }
+.mode-switch button.is-active { background: var(--accent); color: #fff; }
+.req-line { display: flex; gap: 4px; }
+.req-line select { flex: 0 0 70px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; font-size: 11px; }
+.req-line input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 6px; font-size: 12px; font-family: ui-monospace, monospace; }
+
 /* Ledger timeline */
 .ledger { display: flex; flex-direction: column; gap: 6px; }
 .ledger__entry { background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--wp); border-radius: 6px; padding: 6px 8px; }

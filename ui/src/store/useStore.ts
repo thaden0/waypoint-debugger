@@ -43,6 +43,9 @@ interface State {
   swaps: SwapSite[];
 
   // Run / ledger
+  runMode: 'unit' | 'request';
+  reqMethod: string;
+  reqUri: string;
   entryMethod: string | null;
   entryArgs: string;
   ledger: LedgerEntry[];
@@ -61,7 +64,11 @@ interface State {
   setMode: (mode: Mode) => void;
   setEntryMethod: (m: string) => void;
   setEntryArgs: (a: string) => void;
+  setRunMode: (m: 'unit' | 'request') => void;
+  setReqMethod: (m: string) => void;
+  setReqUri: (u: string) => void;
   startRun: () => Promise<void>;
+  startRequest: () => Promise<void>;
   replay: (seq: number, method: string) => Promise<void>;
   renderEntry: (method: string, uri: string) => Promise<void>;
 }
@@ -87,6 +94,9 @@ export const useStore = create<State>((set, get) => ({
   view: 'canvas',
   markers: [],
   swaps: [],
+  runMode: 'unit',
+  reqMethod: 'GET',
+  reqUri: '/',
   entryMethod: null,
   entryArgs: '[]',
   ledger: [],
@@ -173,6 +183,9 @@ export const useStore = create<State>((set, get) => ({
   setMode: (mode) => set({ mode }),
   setEntryMethod: (entryMethod) => set({ entryMethod }),
   setEntryArgs: (entryArgs) => set({ entryArgs }),
+  setRunMode: (runMode) => set({ runMode }),
+  setReqMethod: (reqMethod) => set({ reqMethod }),
+  setReqUri: (reqUri) => set({ reqUri }),
 
   startRun: async () => {
     const { openPath, structure, entryMethod, entryArgs, markers, swaps } = get();
@@ -209,6 +222,42 @@ export const useStore = create<State>((set, get) => ({
         swaps: fileSwaps,
       });
       set({ lastRun: run, ledger: run.ledger ?? get().ledger });
+    } catch (e) {
+      set({ lastRun: { ok: false, error: (e as Error).message } });
+    }
+  },
+
+  startRequest: async () => {
+    const { markers, swaps, reqMethod, reqUri } = get();
+
+    // Cross-file targets: every waypoint marker, grouped by file. This is the
+    // whole-request capability — capture flows through every targeted class the
+    // request touches, not one unit.
+    const targets: Record<string, { waypoints: { line: number }[]; swaps: { line: number; mode: string; expression?: string }[] }> = {};
+    for (const m of markers.filter((mk) => mk.kind === 'waypoint')) {
+      (targets[m.path] ??= { waypoints: [], swaps: [] }).waypoints.push({ line: m.line });
+    }
+    for (const s of swaps) {
+      (targets[s.path] ??= { waypoints: [], swaps: [] }).swaps.push({ line: s.line, mode: 'replace', expression: s.expression });
+    }
+
+    if (Object.keys(targets).length === 0) {
+      set({ lastRun: { ok: false, error: 'place at least one waypoint before running a request' } });
+      return;
+    }
+
+    set({ mode: 'running', ledger: [], log: [...get().log, `request ${reqMethod} ${reqUri}`] });
+
+    try {
+      const run = await rpc<RunResult & { response?: { body?: string } }>('run.request', {
+        targets,
+        entry: { kind: 'http', method: reqMethod, uri: reqUri },
+      });
+      set({
+        lastRun: run,
+        ledger: run.ledger ?? get().ledger,
+        browserSrc: run.response?.body ?? get().browserSrc,
+      });
     } catch (e) {
       set({ lastRun: { ok: false, error: (e as Error).message } });
     }

@@ -9,11 +9,13 @@ whole run wrapped in a transaction that rolls back by default.
 > Status: **working vertical slice.** The PHP analysis core (parse / scan / swap /
 > waypoint instrument / capture / reconstruct-invoke), the **resident host**
 > (boots the app, runs slices, replays captured waypoints), the **WebSocket**
-> control plane (live capture streaming), and the UI (class-diagram canvas, Monaco
-> gutter waypoints, swap workbench, run controls, ledger timeline) are all wired
+> control plane (live capture streaming), **whole-request runs** via include-time
+> instrumentation (capture across controller → service → model in one real
+> request), and the UI (class-diagram canvas, Monaco gutter waypoints, swap
+> workbench, unit + request run controls, ledger timeline) are all wired
 > end-to-end. A real Laravel app boots via `LaravelHost`; anything else falls back
-> to `BareHost`. Next: include-time instrumentation for whole-app runs and the
-> JS/TS adapter. See [docs/tech-design.md](docs/tech-design.md).
+> to `BareHost`. Next: the JS/TS adapter (CDP transport + framework-state ledger).
+> See [docs/tech-design.md](docs/tech-design.md).
 
 ---
 
@@ -54,11 +56,21 @@ UI (React + TS + Vite)            Runner (PHP — resident host)
 ```
 
 The resident host (`bin/host.php`) boots the target app once and serves the
-control plane over a pure-PHP WebSocket — `run.slice` instruments and drives a
-slice, capture hooks stream `ledger.captured` events to the UI, and `run.invoke`
-replays any captured public-method waypoint with reconstructed state inside a
-rollback-guarded transaction. `bin/worker.php` is the FrankenPHP worker-mode
-variant of the same logic.
+control plane over a pure-PHP WebSocket. Two run shapes:
+
+- **`run.slice`** — instruments and drives a single class unit in-process (fast,
+  authored state).
+- **`run.request`** — spawns a fresh subprocess (`bin/request-run.php`) that
+  registers a file stream wrapper rewriting the *targeted* files as they're
+  `include`d, then drives a real request so capture flows across every waypointed
+  class the request touches (controller → service → model). A fresh process per
+  run is required because PHP can't redefine a loaded class, so a resident process
+  can't re-instrument between runs.
+
+In both, capture hooks stream `ledger.captured` events to the UI as they fire, and
+`run.invoke` replays any captured public-method waypoint with reconstructed state
+inside a rollback-guarded transaction. `bin/worker.php` is the FrankenPHP
+worker-mode variant.
 
 The runner is the concrete **PHP adapter** of a language-neutral contract
 (`parse / instrument / swap / capture / reconstruct / transport`). A future JS/TS
@@ -111,9 +123,10 @@ ledger fill live, and replay any captured waypoint.
 | `runner/src/Capture` | the ledger primitive + reproducibility gate |
 | `runner/src/Reconstruct` | reconstruct + invoke with rollback guard |
 | `runner/src/Host` | runner-as-host: Laravel / Bare host + tx guard |
-| `runner/src/Run` | SliceRunner — instrument → load → drive → capture |
+| `runner/src/Instrument` | file stream wrapper — rewrites targeted files on include |
+| `runner/src/Run` | SliceRunner (unit) + RequestRunner (whole-request subprocess) |
 | `runner/src/Rpc` | JSON-RPC dispatcher, HTTP + WebSocket transports |
-| `runner/bin` | `host.php` (WS resident), `server.php` (HTTP), `worker.php` (FrankenPHP) |
+| `runner/bin` | `host.php` (WS resident), `server.php` (HTTP), `request-run.php` (subprocess), `worker.php` (FrankenPHP) |
 | `ui/` | React + TS UI (canvas, editor, run controls, ledger) |
 | `docs/tech-design.md` | the implementation-facing design |
 | `docs/concept-notes.md` | the rationale record behind the decisions |

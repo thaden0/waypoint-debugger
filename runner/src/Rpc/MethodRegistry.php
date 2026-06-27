@@ -7,6 +7,7 @@ namespace Waypoint\Runner\Rpc;
 use Waypoint\Runner\Capture\Recorder;
 use Waypoint\Runner\Host\HostInterface;
 use Waypoint\Runner\Reconstruct\Invoker;
+use Waypoint\Runner\Run\RequestRunner;
 use Waypoint\Runner\Run\SliceRunner;
 use Waypoint\Runner\Structure\StructureExtractor;
 use Waypoint\Runner\Swap\ProblemScanner;
@@ -129,6 +130,26 @@ final class MethodRegistry
                 ]);
                 $result['ledger'] = Recorder::ledger();
                 return $result;
+            },
+
+            // Whole-request run: spawn a fresh subprocess with include-time
+            // instrumentation so capture flows through every targeted class the
+            // request touches (controller -> service -> model), not one unit.
+            // Captures stream live over the Notifier as the subprocess emits them.
+            'run.request' => function (array $p) {
+                Recorder::reset();
+                $runnerDir = dirname(__DIR__, 2);
+                $runner = new RequestRunner($runnerDir);
+                $config = [
+                    'projectRoot' => $this->projectRoot,
+                    'driver' => $p['driver'] ?? $this->host?->describe()['driver'],
+                    'psr4' => $p['psr4'] ?? [],
+                    'targets' => $p['targets'] ?? [],
+                    'entry' => $p['entry'] ?? ['kind' => 'http', 'method' => 'GET', 'uri' => '/'],
+                ];
+                return $runner->run($config, static function (array $entry): void {
+                    Notifier::notify('ledger.captured', $entry);
+                });
             },
 
             // Reconstruct + invoke from a captured (or authored) ledger entry.
