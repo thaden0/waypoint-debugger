@@ -13,6 +13,7 @@ export function RunControls() {
   const setEntryArgs = useStore((s) => s.setEntryArgs);
   const startRun = useStore((s) => s.startRun);
   const startRequest = useStore((s) => s.startRequest);
+  const startDebug = useStore((s) => s.startDebug);
   const hasHost = useStore((s) => s.hasHost);
   const lastRun = useStore((s) => s.lastRun);
   const runMode = useStore((s) => s.runMode);
@@ -52,7 +53,11 @@ export function RunControls() {
               <span>args (JSON array)</span>
               <textarea value={entryArgs} onChange={(e) => setEntryArgs(e.target.value)} rows={3} spellCheck={false} />
             </label>
-            <button className="primary run-slice" disabled={!hasHost} onClick={() => startRun()}>▷ Run slice</button>
+            <div className="run-row">
+              <button className="primary run-slice" disabled={!hasHost} onClick={() => startRun()}>▷ Run slice</button>
+              <button className="debug-btn" disabled={!hasHost} onClick={() => startDebug()} title="Interactive session: pause at breakpoints, step, continue">🐞 Debug</button>
+            </div>
+            <DebugSession />
           </>
         )
       ) : (
@@ -86,6 +91,60 @@ export function RunControls() {
         <PausedScope id={lastRun.breakpoint.id} scope={lastRun.breakpoint.scope} />
       )}
     </div>
+  );
+}
+
+// Interactive debug session: pause at breakpoints, step line-by-line, continue.
+function DebugSession() {
+  const debugActive = useStore((s) => s.debugActive);
+  const debugPaused = useStore((s) => s.debugPaused);
+  const debugResult = useStore((s) => s.debugResult);
+  const debugCommand = useStore((s) => s.debugCommand);
+
+  if (!debugActive && !debugResult) return null;
+
+  if (debugResult && !debugActive) {
+    return (
+      <div className={'debug-done ' + (debugResult.ok ? 'ok' : 'err')}>
+        {debugResult.stopped ? 'debug stopped' : <>finished → <code>{JSON.stringify(debugResult.result)}</code></>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="debug-session">
+      {debugPaused ? (
+        <>
+          <div className="debug-session__head">⏸ paused at line <code>{debugPaused.line}</code></div>
+          <ScopeView scope={debugPaused.scope} />
+          <div className="debug-controls">
+            <button className="primary" onClick={() => debugCommand('continue')} title="Continue to next breakpoint">▷ Continue</button>
+            <button onClick={() => debugCommand('step')} title="Step to next line">⤵ Step</button>
+            <button className="stop" onClick={() => debugCommand('stop')} title="Stop the session">◻ Stop</button>
+          </div>
+        </>
+      ) : (
+        <div className="debug-session__running">running… <button className="stop" onClick={() => debugCommand('stop')}>◻ Stop</button></div>
+      )}
+    </div>
+  );
+}
+
+function ScopeView({ scope }: { scope: Record<string, { tier: number; type: string; preview: unknown }> }) {
+  const entries = Object.entries(scope);
+  if (entries.length === 0) return <div className="muted">no locals in scope</div>;
+  return (
+    <table className="scope">
+      <tbody>
+        {entries.map(([name, v]) => (
+          <tr key={name} className={v.tier === 3 ? 'tier3' : ''}>
+            <td className="scope__name">{name}</td>
+            <td className="scope__type">{v.type}</td>
+            <td className="scope__val"><code>{previewText(v.preview)}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

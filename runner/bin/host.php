@@ -61,10 +61,11 @@ try {
     fwrite(STDERR, "[host] boot failed (continuing host-less for analysis): {$e->getMessage()}\n");
 }
 
-$registry = new MethodRegistry($projectRoot, $host);
+$debug = new \Waypoint\Runner\Debug\DebugManager();
+$registry = new MethodRegistry($projectRoot, $host, $debug);
 $dispatcher = new Dispatcher($registry->methods());
 
-$server = new WebSocketServer($dispatcher, '127.0.0.1', $wsPort);
+$server = new WebSocketServer($dispatcher, '127.0.0.1', $wsPort, $debug);
 
 // Clean shutdown on Ctrl-C.
 if (function_exists('pcntl_signal')) {

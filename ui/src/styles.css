@@ -456,3 +456,27 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .react-flow__controls-button:hover svg { fill: var(--brass-bright); }
 .wp-control-magnify { font-size: 14px; color: var(--brass); }
 .react-flow__controls-button:hover .wp-control-magnify { color: var(--brass-bright); }
+
+/* Interactive debug session */
+.run-row { display: flex; gap: 6px; }
+.run-row .run-slice { flex: 1; }
+.debug-btn { background: var(--bg-3); border: 1px solid var(--line-strong); color: var(--text); border-radius: 5px; padding: 7px 10px; font-size: 12px; cursor: pointer; }
+.debug-btn:hover:not(:disabled) { background: rgb(var(--accent-rgb) / 0.15); border-color: var(--accent); }
+.debug-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.debug-session { margin-top: 8px; background: rgb(var(--accent-rgb) / 0.08); border: 1px solid rgb(var(--accent-rgb) / 0.35); border-radius: 6px; padding: 8px; }
+.debug-session__head { font-size: 12px; color: var(--bp); margin-bottom: 6px; }
+.debug-session__head code { color: var(--brass-bright); }
+.debug-session__running { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.debug-controls { display: flex; gap: 6px; margin-top: 8px; }
+.debug-controls button { flex: 1; border: 1px solid var(--line-strong); border-radius: 5px; padding: 6px; font-size: 11px; cursor: pointer; background: var(--bg-3); color: var(--text); }
+.debug-controls button.primary { background: var(--cta-grad); border-color: var(--cta); color: #fff; box-shadow: var(--cta-glow); }
+.debug-controls button.stop { color: var(--bp); border-color: var(--bp); background: transparent; }
+.debug-controls button:hover:not(:disabled) { filter: brightness(1.15); }
+.debug-done { margin-top: 8px; font-size: 11px; padding: 6px 8px; border-radius: 5px; }
+.debug-done.ok { background: rgb(var(--ok-rgb) / 0.12); color: var(--ok); }
+.debug-done.err { background: rgb(var(--bp-rgb) / 0.12); color: var(--bp); }
+.debug-done code { font-family: ui-monospace, monospace; }
+
+/* current execution line (paused) */
+.wp-current-line { background: rgb(var(--brass-rgb) / 0.14); }
+.wp-current-glyph { background: var(--brass); border-radius: 2px; width: 4px !important; margin-left: 8px; box-shadow: 0 0 8px var(--brass); }

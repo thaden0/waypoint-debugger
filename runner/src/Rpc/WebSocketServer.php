@@ -28,6 +28,7 @@ final class WebSocketServer
         private Dispatcher $dispatcher,
         private string $host = '127.0.0.1',
         private int $port = 9778,
+        private ?\Waypoint\Runner\Debug\DebugManager $debug = null,
     ) {
     }
 
@@ -49,6 +50,12 @@ final class WebSocketServer
 
         while ($this->running) {
             $read = [$listen, ...array_values($this->clients)];
+            // Multiplex the interactive debug subprocess onto the same loop, so
+            // its pauses stream out while the loop stays free to receive commands.
+            $debugOut = $this->debug?->active() ? $this->debug->stdout() : null;
+            if ($debugOut !== null) {
+                $read[] = $debugOut;
+            }
             $write = null;
             $except = null;
             // Wake periodically so notifications queued between reads still flush.
@@ -59,6 +66,10 @@ final class WebSocketServer
             foreach ($read as $sock) {
                 if ($sock === $listen) {
                     $this->accept($listen);
+                } elseif ($debugOut !== null && $sock === $debugOut) {
+                    foreach ($this->debug->readAvailable() as $msg) {
+                        Notifier::notify($msg['method'] ?? 'debug.event', $msg['params'] ?? []);
+                    }
                 } else {
                     $this->onReadable($sock);
                 }

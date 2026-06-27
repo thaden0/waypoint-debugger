@@ -35,6 +35,7 @@ export function CodeEditor({ placing }: Props) {
   const toggleMarker = useStore((s) => s.toggleMarker);
   const revealLine = useStore((s) => s.revealLine);
   const clearReveal = useStore((s) => s.clearReveal);
+  const currentLine = useStore((s) => s.currentLine);
 
   // Eligible waypoint lines = public method declaration lines.
   const eligibleLines = new Set<number>();
@@ -97,8 +98,16 @@ export function CodeEditor({ placing }: Props) {
       });
     }
 
+    // Current execution line while paused in an interactive debug session.
+    if (currentLine) {
+      decos.push({
+        range: new monaco.Range(currentLine, 1, currentLine, 1),
+        options: { isWholeLine: true, className: 'wp-current-line', glyphMarginClassName: 'wp-current-glyph' },
+      });
+    }
+
     decorationsRef.current = ed.deltaDecorations(decorationsRef.current, decos);
-  }, [markers, problems, openPath, source, structure]);
+  }, [markers, problems, openPath, source, structure, currentLine]);
 
   // Reveal + flash a line when a canvas member is clicked (zoom-to-method).
   useEffect(() => {

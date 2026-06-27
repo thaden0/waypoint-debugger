@@ -30,11 +30,13 @@ final class MethodRegistry
     private string $projectRoot;
     private ?HostInterface $host;
     private bool $manageHost;
+    private ?\Waypoint\Runner\Debug\DebugManager $debug;
 
-    public function __construct(string $projectRoot, ?HostInterface $host = null)
+    public function __construct(string $projectRoot, ?HostInterface $host = null, ?\Waypoint\Runner\Debug\DebugManager $debug = null)
     {
         $this->projectRoot = rtrim($projectRoot, '/');
         $this->host = $host;
+        $this->debug = $debug;
         $this->manageHost = $host !== null; // resident host process re-points its host
         $this->structure = new StructureExtractor();
         $this->scanner = new ProblemScanner();
@@ -140,8 +142,49 @@ final class MethodRegistry
         if ($this->manageHost) {
             $methods += $this->hostMethods();
         }
+        if ($this->debug !== null) {
+            $methods += $this->debugMethods($this->debug);
+        }
 
         return $methods;
+    }
+
+    /**
+     * Interactive debug session: pause/resume across a subprocess. start() spawns
+     * it; continue/step/stop drive it while the host loop streams its pauses.
+     *
+     * @return array<string,callable>
+     */
+    private function debugMethods(\Waypoint\Runner\Debug\DebugManager $debug): array
+    {
+        return [
+            'run.debug.start' => function (array $p) use ($debug) {
+                return $debug->start(dirname(__DIR__, 2), [
+                    'projectRoot' => $this->projectRoot,
+                    'driver' => $p['driver'] ?? $this->host?->describe()['driver'],
+                    'psr4' => $p['psr4'] ?? [],
+                    'source' => $p['source'] ?? $this->readProjectFile($p['path']),
+                    'class' => $p['class'],
+                    'method' => $p['method'],
+                    'args' => $p['args'] ?? [],
+                    'receiverArgs' => $p['receiverArgs'] ?? [],
+                    'swaps' => $p['swaps'] ?? [],
+                    'breakpoints' => $p['breakpoints'] ?? [],
+                ]);
+            },
+            'run.debug.continue' => function () use ($debug) {
+                $debug->send('continue');
+                return ['ok' => true];
+            },
+            'run.debug.step' => function () use ($debug) {
+                $debug->send('step');
+                return ['ok' => true];
+            },
+            'run.debug.stop' => function () use ($debug) {
+                $debug->stop();
+                return ['ok' => true];
+            },
+        ];
     }
 
     /**

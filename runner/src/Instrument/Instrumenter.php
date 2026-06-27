@@ -53,11 +53,12 @@ final class Instrumenter
             $this->multiByLine($ops['overrides'] ?? []),
             $this->singleByLine($ops['waypoints'] ?? []),
             $this->singleByLine($ops['breakpoints'] ?? []),
+            (bool) ($ops['step'] ?? false),
             $this->parser,
         ) extends NodeVisitorAbstract {
             /** @var array<int,string> */
             private array $classStack = [];
-            private array $placedBp = [];
+            private array $placedPause = [];
             private array $placedOv = [];
 
             public function __construct(
@@ -65,6 +66,7 @@ final class Instrumenter
                 private array $overrides,
                 private array $waypoints,
                 private array $breakpoints,
+                private bool $step,
                 private \PhpParser\Parser $parser,
             ) {
             }
@@ -108,17 +110,24 @@ final class Instrumenter
                 $line = $node->getStartLine();
                 $prepend = [];
 
+                // one pause point per statement-line: a breakpoint, else a step
+                // probe (when stepping is instrumented).
+                if (!isset($this->placedPause[$line]) && $this->breakable($node)) {
+                    if (isset($this->breakpoints[$line])) {
+                        $this->placedPause[$line] = true;
+                        $bp = $this->breakpoints[$line];
+                        $prepend[] = $this->breakpointHook($bp['id'] ?? ('bp:' . $line));
+                    } elseif ($this->step) {
+                        $this->placedPause[$line] = true;
+                        $prepend[] = $this->stepHook($line);
+                    }
+                }
+
                 if (isset($this->overrides[$line]) && !isset($this->placedOv[$line])) {
                     $this->placedOv[$line] = true;
                     foreach ($this->overrides[$line] as $ov) {
                         $prepend[] = $this->overrideAssign($ov['var'], $ov['expression']);
                     }
-                }
-
-                if (isset($this->breakpoints[$line]) && !isset($this->placedBp[$line]) && $this->breakable($node)) {
-                    $this->placedBp[$line] = true;
-                    $bp = $this->breakpoints[$line];
-                    $prepend[] = $this->breakpointHook($bp['id'] ?? ('bp:' . $line));
                 }
 
                 return $prepend !== [] ? [...$prepend, $node] : null;
@@ -185,13 +194,31 @@ final class Instrumenter
                     [
                         new Node\Arg(new Node\Scalar\String_($id)),
                         new Node\Arg(new Expr\FuncCall(new Node\Name('get_defined_vars'))),
-                        new Node\Arg(new Expr\Ternary(
-                            new Expr\Isset_([new Expr\Variable('this')]),
-                            new Expr\Variable('this'),
-                            new Expr\ConstFetch(new Node\Name('null'))
-                        )),
+                        new Node\Arg($this->thisOrNull()),
                     ]
                 ));
+            }
+
+            private function stepHook(int $line): Stmt\Expression
+            {
+                return new Stmt\Expression(new Expr\StaticCall(
+                    new Node\Name\FullyQualified('Waypoint\\Runner\\Debug\\Breakpoint'),
+                    'step',
+                    [
+                        new Node\Arg(new Node\Scalar\LNumber($line)),
+                        new Node\Arg(new Expr\FuncCall(new Node\Name('get_defined_vars'))),
+                        new Node\Arg($this->thisOrNull()),
+                    ]
+                ));
+            }
+
+            private function thisOrNull(): Expr
+            {
+                return new Expr\Ternary(
+                    new Expr\Isset_([new Expr\Variable('this')]),
+                    new Expr\Variable('this'),
+                    new Expr\ConstFetch(new Node\Name('null'))
+                );
             }
         };
 

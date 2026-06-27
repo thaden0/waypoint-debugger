@@ -57,6 +57,12 @@ interface State {
   breakpointHits: BreakpointHit[];
   lastRunParams: Record<string, unknown> | null;
   lastRun: RunResult | null;
+
+  // Interactive debug session (true pause/resume)
+  debugActive: boolean;
+  debugPaused: { id: string; line: number; scope: Record<string, { tier: number; type: string; preview: unknown }> } | null;
+  debugResult: { ok: boolean; result?: unknown; stopped?: boolean } | null;
+  currentLine: number | null;
   lastInvoke: { seq: number; result: InvokeResult } | null;
   browserSrc: string | null;
   log: string[];
@@ -82,6 +88,8 @@ interface State {
   setReqUri: (u: string) => void;
   startRun: () => Promise<void>;
   startRequest: () => Promise<void>;
+  startDebug: () => Promise<void>;
+  debugCommand: (cmd: 'continue' | 'step' | 'stop') => Promise<void>;
   continueWithOverrides: (line: number, overrides: Array<{ var: string; expression: string }>) => Promise<void>;
   replay: (seq: number, method: string) => Promise<void>;
   renderEntry: (method: string, uri: string) => Promise<void>;
@@ -125,6 +133,10 @@ export const useStore = create<State>((set, get) => ({
   breakpointHits: [],
   lastRunParams: null,
   lastRun: null,
+  debugActive: false,
+  debugPaused: null,
+  debugResult: null,
+  currentLine: null,
   lastInvoke: null,
   browserSrc: null,
   log: [],
@@ -142,6 +154,14 @@ export const useStore = create<State>((set, get) => ({
         } else if (method === 'breakpoint.hit') {
           set({ breakpointHits: [...get().breakpointHits, params as unknown as BreakpointHit] });
           get().log.push(`breakpoint ${(params as { id: string }).id}`);
+        } else if (method === 'debug.paused') {
+          const p = params as { id: string; line: number; scope: Record<string, { tier: number; type: string; preview: unknown }> };
+          set({ debugPaused: p, currentLine: p.line, revealLine: p.line });
+          get().log.push(`paused @ line ${p.line}`);
+        } else if (method === 'debug.finished') {
+          const p = params as { ok: boolean; result?: unknown; stopped?: boolean };
+          set({ debugActive: false, debugPaused: null, currentLine: null, debugResult: p });
+          get().log.push(`debug finished${p.stopped ? ' (stopped)' : ''}`);
         }
         });
       }
@@ -306,6 +326,50 @@ export const useStore = create<State>((set, get) => ({
       set({ lastRun: run, ledger: run.ledger ?? get().ledger });
     } catch (e) {
       set({ lastRun: { ok: false, error: (e as Error).message } });
+    }
+  },
+
+  // Interactive debug session — true pause/resume across a subprocess.
+  startDebug: async () => {
+    const { openPath, structure, entryMethod, entryArgs, markers, swaps } = get();
+    if (!openPath || !structure || !entryMethod) return;
+    const firstClass = structure.nodes.find((n) => n.kind !== 'function');
+    if (!firstClass || firstClass.kind === 'function') return;
+
+    let args: unknown[] = [];
+    try {
+      args = JSON.parse(entryArgs);
+      if (!Array.isArray(args)) args = [args];
+    } catch {
+      set({ debugResult: { ok: false } });
+      return;
+    }
+    const breakpoints = markers.filter((m) => m.path === openPath && m.kind === 'breakpoint').map((m) => ({ line: m.line }));
+    const fileSwaps = swaps.filter((s) => s.path === openPath).map((s) => ({ line: s.line, mode: 'replace', expression: s.expression }));
+
+    set({ mode: 'running', debugActive: true, debugPaused: null, debugResult: null, currentLine: null, log: [...get().log, `debug ${(firstClass as { name: string }).name}::${entryMethod}`] });
+    try {
+      await rpc('run.debug.start', {
+        path: openPath,
+        class: (firstClass as { name: string }).name,
+        method: entryMethod,
+        args,
+        breakpoints,
+        swaps: fileSwaps,
+      });
+    } catch (e) {
+      set({ debugActive: false, debugResult: { ok: false }, log: [...get().log, `debug error: ${(e as Error).message}`] });
+    }
+  },
+
+  debugCommand: async (cmd) => {
+    // optimistic: clear the paused state until the next pause arrives
+    if (cmd === 'stop') set({ debugActive: false, debugPaused: null, currentLine: null });
+    else set({ debugPaused: null, currentLine: null });
+    try {
+      await rpc(`run.debug.${cmd}`);
+    } catch {
+      /* session may have ended */
     }
   },
 

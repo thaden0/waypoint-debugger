@@ -52,6 +52,7 @@ final class SliceRunner
             'overrides' => $req['overrides'] ?? [],
             'waypoints' => $req['waypoints'] ?? [],
             'breakpoints' => $req['breakpoints'] ?? [],
+            'step' => $req['step'] ?? false,
         ]);
         \Waypoint\Runner\Debug\Breakpoint::reset();
         \Waypoint\Runner\Debug\Breakpoint::setMode($req['breakpointMode'] ?? 'halt');
@@ -94,6 +95,10 @@ final class SliceRunner
                 'runtimeClass' => $runtimeFqn,
                 'ledgerCount' => count(Recorder::ledger()),
             ];
+        } catch (\Waypoint\Runner\Debug\StopRun) {
+            // Interactive debug session stopped by the user.
+            $rollback();
+            return ['ok' => true, 'stopped' => true, 'runtimeClass' => $runtimeFqn];
         } catch (\Waypoint\Runner\Debug\BreakpointHalt $halt) {
             // Run-to-breakpoint: stopped at the line, scope captured.
             $rollback();
