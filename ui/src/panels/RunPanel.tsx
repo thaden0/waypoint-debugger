@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
-import type { ClassModel } from '../types';
+import type { ClassModel, InvokeResult } from '../types';
 
 // Capability (b): author an entry (method + args) for the open class and run the
 // slice. Waypoints (gutter) + swaps (workbench) ride along. The ledger that comes
@@ -224,8 +224,8 @@ function previewText(p: unknown): string {
 
 export function LedgerTimeline() {
   const ledger = useStore((s) => s.ledger);
-  const replay = useStore((s) => s.replay);
-  const lastInvoke = useStore((s) => s.lastInvoke);
+  const experiment = useStore((s) => s.experiment);
+  const openExperiment = useStore((s) => s.openExperiment);
 
   if (ledger.length === 0) {
     return <div className="muted">No captures yet. Place waypoints and run a slice.</div>;
@@ -234,16 +234,20 @@ export function LedgerTimeline() {
   return (
     <div className="ledger">
       {ledger.map((e) => {
-        const method = e.id.split('::')[1] ?? e.id;
-        const invoked = lastInvoke?.seq === e.seq ? lastInvoke.result : null;
+        const open = experiment?.seq === e.seq;
         return (
-          <div key={e.seq} className={'ledger__entry' + (e.reproducible ? '' : ' not-repro')}>
+          <div key={e.seq} className={'ledger__entry' + (e.reproducible ? '' : ' not-repro') + (open ? ' open' : '')}>
             <div className="ledger__head">
               <span className="seq">#{e.seq}</span>
               <code>{e.id}</code>
               {!e.reproducible && <span className="tier3" title="holds tier-3 state">⚠ not reproducible</span>}
-              <button disabled={!e.reproducible} onClick={() => replay(e.seq, method)}>
-                replay
+              <button
+                className={'ledger__replay-btn' + (open ? ' active' : '')}
+                disabled={!e.reproducible}
+                onClick={() => openExperiment(e.seq)}
+                title="Reconstruct this checkpoint and replay it with what-if inputs"
+              >
+                {open ? 'close' : 'replay…'}
               </button>
             </div>
             <div className="ledger__args">
@@ -252,18 +256,126 @@ export function LedgerTimeline() {
                 <> · args: {e.args.map((a, i) => <code key={i}>{a.type}</code>)}</>
               )}
             </div>
-            {invoked && (
-              <div className={'ledger__replay ' + (invoked.ok ? 'ok' : 'err')}>
-                {invoked.ok ? (
-                  <>= <code>{JSON.stringify(invoked.result)}</code> <span className="muted">({invoked.mode}, {invoked.committed ? 'committed' : 'rolled back'})</span></>
-                ) : (
-                  <>error: {invoked.error}</>
-                )}
-              </div>
-            )}
+            {open && experiment && <ReplayExperiment />}
           </div>
         );
       })}
     </div>
   );
+}
+
+// The replay what-if loop: reconstruct one checkpoint, then re-invoke it with
+// edited inputs and diff the outcome against the as-captured baseline.
+function ReplayExperiment() {
+  const exp = useStore((s) => s.experiment)!;
+  const setExpArg = useStore((s) => s.setExpArg);
+  const setExpMethod = useStore((s) => s.setExpMethod);
+  const setExpMode = useStore((s) => s.setExpMode);
+  const runExperiment = useStore((s) => s.runExperiment);
+
+  const dirty =
+    exp.method !== exp.defaultMethod || exp.args.some((a) => a.editable && a.text !== a.original);
+
+  return (
+    <div className="exp">
+      <div className="exp__baseline">
+        <span className="exp__label">baseline</span>
+        {exp.baseline ? <ResultValue r={exp.baseline} /> : <span className="muted">running…</span>}
+        <span className="muted exp__hint">as captured · rolled back</span>
+      </div>
+
+      <div className="exp__form">
+        <label className="exp__row">
+          <span className="exp__rl">method</span>
+          <input
+            className="exp__method"
+            value={exp.method}
+            spellCheck={false}
+            onChange={(ev) => setExpMethod(ev.target.value)}
+          />
+        </label>
+
+        {exp.args.map((a, i) => (
+          <label className="exp__row" key={i}>
+            <span className="exp__rl">
+              arg {i} <span className="muted">{a.type}</span>
+            </span>
+            {a.editable ? (
+              <input
+                className={'exp__arg' + (a.error ? ' bad' : '') + (a.text !== a.original ? ' edited' : '')}
+                value={a.text}
+                spellCheck={false}
+                onChange={(ev) => setExpArg(i, ev.target.value)}
+                title={a.error ?? 'tier-1 — author any JSON value'}
+              />
+            ) : (
+              <span className="exp__arg locked" title={`tier-${a.tier} — kept as captured`}>
+                {a.original} <span className="muted">· captured</span>
+              </span>
+            )}
+          </label>
+        ))}
+
+        <div className="exp__controls">
+          <div className="exp__modes" role="radiogroup" aria-label="run mode">
+            <button
+              className={'exp__mode' + (exp.mode === 'peek' ? ' on' : '')}
+              onClick={() => setExpMode('peek')}
+              title="Roll back after landing — safe"
+            >
+              peek
+            </button>
+            <button
+              className={'exp__mode danger' + (exp.mode === 'destructive' ? ' on' : '')}
+              onClick={() => setExpMode('destructive')}
+              title="Commit the transaction — writes persist"
+            >
+              destructive
+            </button>
+          </div>
+          <button className="exp__run" disabled={exp.running} onClick={() => runExperiment()}>
+            {exp.running ? 'running…' : exp.mode === 'destructive' ? 'replay + commit' : 'replay'}
+          </button>
+        </div>
+        {exp.mode === 'destructive' && (
+          <div className="exp__warn">⚠ destructive — this commits to the database, not a rollback-guarded peek.</div>
+        )}
+      </div>
+
+      {exp.result && (
+        <div className="exp__result">
+          <span className="exp__label">{dirty ? 'what-if' : 'replay'}</span>
+          <ResultValue r={exp.result} />
+          <span className="muted exp__hint">
+            {exp.result.mode}
+            {exp.result.ok ? ` · ${exp.result.committed ? 'committed' : 'rolled back'}` : ''}
+          </span>
+          {exp.result.ok && exp.baseline?.ok && <ResultDiff baseline={exp.baseline} result={exp.result} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultValue({ r }: { r: InvokeResult }) {
+  if (!r.ok) return <span className="exp__err">error: {r.error}</span>;
+  return <code className="exp__val">{previewText(r.preview ?? r.result)}</code>;
+}
+
+// Compare a what-if outcome against the baseline. For two numbers we show the
+// delta; otherwise a same/changed verdict on the rendered values.
+function ResultDiff({ baseline, result }: { baseline: InvokeResult; result: InvokeResult }) {
+  const a = baseline.preview ?? baseline.result;
+  const b = result.preview ?? result.result;
+  if (typeof a === 'number' && typeof b === 'number') {
+    const d = b - a;
+    if (d === 0) return <span className="exp__diff same">no change</span>;
+    return (
+      <span className="exp__diff changed">
+        {previewText(a)} → {previewText(b)} (Δ {d > 0 ? '+' : ''}{d})
+      </span>
+    );
+  }
+  const same = previewText(a) === previewText(b);
+  return <span className={'exp__diff ' + (same ? 'same' : 'changed')}>{same ? 'no change' : 'changed vs baseline'}</span>;
 }

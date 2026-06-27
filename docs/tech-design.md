@@ -384,16 +384,23 @@ Laravel 13 app and (for JS) a real Chrome:
 - **Canvas**: tree mode (nested folder→file→class, collapsible, member click → editor
   reveal) + flat mode (elk class diagram). **Ledger timeline**, **paused scope view**,
   **live project-browser pane**.
+- **Replay what-if loop.** A captured checkpoint is a launchpad, not just a record:
+  reconstruct the receiver, then re-invoke with **edited tier-1 args / a different
+  method / peek-or-destructive mode**, and **diff the outcome against the as-captured
+  baseline**. `run.invoke` takes an `argOverrides` map and returns a depth-capped
+  `preview` (via `toArray()`/`JsonSerializable`, so Eloquent models & Collections
+  render as data). Verified against the real testbed: `projectedLoad(5)→10` replayed
+  at `20→40` (Δ +30), peek rolled back; `summary()` re-invoked on the same
+  reconstructed receiver returns real Eloquent data.
 
 ### Known UX gaps / backlog (found on first real use)
 
 These are polish gaps that accumulated while proving the engine — none are deep.
 
-- **No "open project" UI.** Project root is set only by the host's `PROJECT_ROOT`
-  env var; switching projects means restarting the host. Needs an in-UI open/switch.
-- **Editor is read-only.** Monaco is `readOnly: true`; the only editable surfaces are
-  the swap expression and run args. Live source editing is unbuilt (was always a
-  "noting it" item, not a v1 goal — but worth deciding).
+- ~~**No "open project" UI.**~~ Done — `project.open` re-points the host from the UI.
+- ~~**Editor is read-only.**~~ Done — Monaco is editable with Ctrl/Cmd+S save (`fs.write`),
+  and runs use the live (possibly unsaved) editor source.
+- ~~**StrictMode double-subscribes notifications.**~~ Done — `notificationsBound` guard.
 - **Explorer is a flat list, and redundant with the tree canvas.** The left rail is
   a path-sorted list, not an IDE tree; the new tree canvas is the real navigator.
   Reconcile: make the Explorer a proper tree, or fold it into the canvas.
@@ -408,19 +415,19 @@ These are polish gaps that accumulated while proving the engine — none are dee
   Separate them and clarify labels: *Problem code* = swap candidates (not warnings);
   *Unit* = run one method in isolation; *Request* = drive a real HTTP route (Postman-
   like) capturing across files.
-- **StrictMode double-subscribes notifications** → duplicate console log lines.
 - **Flat-mode minimap doesn't color group/class nodes.**
 
 ### Functional gaps (not yet built)
 
-- **Request-mode replay.** Whole-request capture works, but replaying a captured
-  waypoint from a *subprocess* run needs blob pass-through (the subprocess's
-  reconstruction blobs don't survive its exit). Unit-mode replay works today.
-- **Interactive breakpoint continue / live variable edit.** Current model is
-  run-to-breakpoint + (continue = re-run, change-a-var = swap + re-run). True
-  pause/resume would need async run management in the host.
-- **CI / packaging.** No CI; three test suites (PHP unit, PHP docker-integration, JS
-  vitest) run manually.
+- ~~**Request-mode replay.**~~ Done — whole-request entries carry base64
+  reconstruction blobs that the host decodes before reconstruction, so a captured
+  waypoint from a subprocess run replays like a unit one.
+- ~~**Interactive breakpoint continue / step.**~~ Done — a subprocess blocks on stdin
+  at breakpoints while the host select-loop multiplexes its pauses; continue / step /
+  stop drive it live. (Live *variable* edit at a pause is still swap + re-run.)
+- ~~**CI.**~~ Done — GitHub Actions runs the PHP, JS, and UI suites on every push.
+- **Packaging / distribution.** Still manual: no published binaries/extension; the
+  host, JS adapter, and UI are started by hand. The remaining pre-product gap.
 
 ---
 

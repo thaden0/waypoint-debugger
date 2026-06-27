@@ -25,6 +25,31 @@ interface RunnerInfo {
   host?: { driver: string; app: string } | null;
 }
 
+// The replay what-if loop: one captured checkpoint, reconstructed, re-invokable
+// with edited inputs. `baseline` is the as-captured outcome (always peek); the
+// user edits tier-1 args / picks a method / chooses mode, re-invokes, and we diff
+// `result` against `baseline`.
+export interface ArgEdit {
+  type: string;
+  tier: 1 | 2 | 3;
+  editable: boolean; // tier-1 scalar/array → authorable; tier 2/3 kept as captured
+  original: string; // JSON text of the captured value
+  text: string; // current (possibly edited) JSON text
+  error?: string; // JSON parse error, if any
+}
+
+export interface Experiment {
+  seq: number;
+  entryId: string;
+  defaultMethod: string;
+  method: string; // method to re-enter on the reconstructed receiver
+  mode: 'peek' | 'destructive';
+  args: ArgEdit[];
+  baseline: InvokeResult | null; // as-captured, peek
+  result: InvokeResult | null; // latest what-if outcome
+  running: boolean;
+}
+
 interface State {
   runner: RunnerInfo | null;
   connected: boolean;
@@ -64,7 +89,7 @@ interface State {
   debugPaused: { id: string; line: number; scope: Record<string, { tier: number; type: string; preview: unknown }> } | null;
   debugResult: { ok: boolean; result?: unknown; stopped?: boolean } | null;
   currentLine: number | null;
-  lastInvoke: { seq: number; result: InvokeResult } | null;
+  experiment: Experiment | null;
   browserSrc: string | null;
   log: string[];
 
@@ -94,7 +119,12 @@ interface State {
   startDebug: () => Promise<void>;
   debugCommand: (cmd: 'continue' | 'step' | 'stop') => Promise<void>;
   continueWithOverrides: (line: number, overrides: Array<{ var: string; expression: string }>) => Promise<void>;
-  replay: (seq: number, method: string) => Promise<void>;
+  openExperiment: (seq: number) => Promise<void>;
+  closeExperiment: () => void;
+  setExpArg: (index: number, text: string) => void;
+  setExpMethod: (method: string) => void;
+  setExpMode: (mode: 'peek' | 'destructive') => void;
+  runExperiment: () => Promise<void>;
   renderEntry: (method: string, uri: string) => Promise<void>;
 }
 
@@ -103,6 +133,26 @@ interface State {
 async function rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   if (wsClient.status === 'open') return wsClient.call<T>(method, params);
   return call<T>(method, params);
+}
+
+// Reconstruct + invoke one checkpoint. Whole-request entries carry a base64
+// reconstruction blob (their subprocess has exited) — pass the full entry;
+// unit-run entries live in the resident ledger and are keyed by seq.
+async function invokeEntry(
+  ledger: LedgerEntry[],
+  seq: number,
+  method: string,
+  mode: 'peek' | 'destructive',
+  argOverrides: Record<number, unknown> | null,
+): Promise<InvokeResult> {
+  const entry = ledger.find((e) => e.seq === seq);
+  const base = entry?.receiver?.blob ? { entry } : { seq };
+  const params = { ...base, method, mode, ...(argOverrides ? { argOverrides } : {}) };
+  try {
+    return await rpc<InvokeResult>('run.invoke', params);
+  } catch (e) {
+    return { ok: false, error: (e as Error).message, mode, committed: false, reproducible: false };
+  }
 }
 
 // Subscribe to server notifications exactly once, even though connect() may run
@@ -141,7 +191,7 @@ export const useStore = create<State>((set, get) => ({
   debugPaused: null,
   debugResult: null,
   currentLine: null,
-  lastInvoke: null,
+  experiment: null,
   browserSrc: null,
   log: [],
 
@@ -210,7 +260,7 @@ export const useStore = create<State>((set, get) => ({
       ledger: [],
       breakpointHits: [],
       lastRun: null,
-      lastInvoke: null,
+      experiment: null,
       browserSrc: null,
       collapsedGroups: [],
       expandedClasses: [],
@@ -448,18 +498,92 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  replay: async (seq, method) => {
-    // Whole-request entries carry a reconstruction blob (their subprocess has
-    // exited) — pass the full entry. Unit-run entries live in the resident
-    // ledger — replay by seq.
-    const entry = get().ledger.find((e) => e.seq === seq);
-    const params = entry?.receiver?.blob ? { entry, method, mode: 'peek' } : { seq, method, mode: 'peek' };
-    try {
-      const result = await rpc<InvokeResult>('run.invoke', params);
-      set({ lastInvoke: { seq, result } });
-    } catch (e) {
-      set({ lastInvoke: { seq, result: { ok: false, error: (e as Error).message, mode: 'peek', committed: false, reproducible: false } } });
+  // Open (or toggle closed) the what-if panel for a checkpoint. On open we build
+  // the editable arg set from the captured snapshots and immediately run the
+  // baseline (as-captured, peek) so the diff has something to compare against.
+  openExperiment: async (seq) => {
+    if (get().experiment?.seq === seq) {
+      set({ experiment: null });
+      return;
     }
+    const entry = get().ledger.find((e) => e.seq === seq);
+    if (!entry) return;
+    const method = entry.id.split('::')[1] ?? entry.id;
+    const args: ArgEdit[] = entry.args.map((a) => {
+      const editable = a.tier === 1;
+      const original = JSON.stringify(a.preview ?? null);
+      return { type: a.type, tier: a.tier, editable, original, text: original };
+    });
+    set({
+      experiment: {
+        seq,
+        entryId: entry.id,
+        defaultMethod: method,
+        method,
+        mode: 'peek',
+        args,
+        baseline: null,
+        result: null,
+        running: true,
+      },
+    });
+    const baseline = await invokeEntry(get().ledger, seq, method, 'peek', null);
+    const exp = get().experiment;
+    if (exp?.seq === seq) set({ experiment: { ...exp, baseline, running: false } });
+  },
+
+  closeExperiment: () => set({ experiment: null }),
+
+  setExpArg: (index, text) => {
+    const exp = get().experiment;
+    if (!exp) return;
+    const args = exp.args.map((a, i) => (i === index ? { ...a, text, error: undefined } : a));
+    set({ experiment: { ...exp, args } });
+  },
+
+  setExpMethod: (method) => {
+    const exp = get().experiment;
+    if (exp) set({ experiment: { ...exp, method } });
+  },
+
+  setExpMode: (mode) => {
+    const exp = get().experiment;
+    if (exp) set({ experiment: { ...exp, mode } });
+  },
+
+  // Run the what-if: parse the edited args, build the override map (only the args
+  // the user actually changed), and re-invoke. A bad JSON arg fails fast with an
+  // inline error rather than hitting the runner.
+  runExperiment: async () => {
+    const exp = get().experiment;
+    if (!exp) return;
+    const argOverrides: Record<number, unknown> = {};
+    const args = [...exp.args];
+    let bad = false;
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (!a.editable || a.text === a.original) continue;
+      try {
+        argOverrides[i] = JSON.parse(a.text);
+      } catch {
+        args[i] = { ...a, error: 'invalid JSON' };
+        bad = true;
+      }
+    }
+    if (bad) {
+      set({ experiment: { ...exp, args } });
+      return;
+    }
+    set({ experiment: { ...exp, running: true } });
+    const result = await invokeEntry(
+      get().ledger,
+      exp.seq,
+      exp.method,
+      exp.mode,
+      Object.keys(argOverrides).length ? argOverrides : null,
+    );
+    const cur = get().experiment;
+    if (cur?.seq === exp.seq) set({ experiment: { ...cur, result, running: false } });
   },
 
   renderEntry: async (method, uri) => {
@@ -468,3 +592,9 @@ export const useStore = create<State>((set, get) => ({
     set({ browserSrc: res.body });
   },
 }));
+
+// Dev-only handle: lets you poke the live store from the console (and drives
+// end-to-end UI checks). Stripped from production behaviour by the DEV guard.
+if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+  (window as unknown as { __wpStore?: typeof useStore }).__wpStore = useStore;
+}

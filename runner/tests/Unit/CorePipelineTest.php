@@ -84,6 +84,30 @@ final class CorePipelineTest extends TestCase
         $this->assertFalse($out['committed']);
     }
 
+    public function testWhatIfArgOverrideReinvokesWithDifferentInput(): void
+    {
+        Recorder::reset();
+        Recorder::capture('Adder::add', new TestAdder(), [5]);
+        $entry = Recorder::entry(0);
+
+        $invoker = new Invoker();
+
+        // Baseline: as captured (5) → 15.
+        $baseline = $invoker->invoke($entry, 'add', 'peek');
+        $this->assertSame(15, $baseline['result']);
+        $this->assertSame(15, $baseline['preview']);
+
+        // What-if: poke the *same* reconstructed receiver with a different arg.
+        $whatIf = $invoker->invoke($entry, 'add', 'peek', [0 => 100]);
+        $this->assertTrue($whatIf['ok']);
+        $this->assertSame(110, $whatIf['result']);
+        $this->assertSame(110, $whatIf['preview']);
+
+        // An absent override keeps the captured arg.
+        $kept = $invoker->invoke($entry, 'add', 'peek', []);
+        $this->assertSame(15, $kept['result']);
+    }
+
     public function testTierThreeValuesAreRefusedNotExploded(): void
     {
         $snapshot = Recorder::snapshotValue(static fn () => 1);

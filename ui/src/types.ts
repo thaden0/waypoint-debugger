@@ -153,6 +153,7 @@ export interface RunResult {
 export interface InvokeResult {
   ok: boolean;
   result?: unknown;
+  preview?: unknown; // depth-capped JSON rendering of the result value, for diffing
   error?: string;
   mode: string;
   committed: boolean;

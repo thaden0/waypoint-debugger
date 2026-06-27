@@ -379,9 +379,39 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
 .tier3 { color: var(--warn); font-size: 10px; }
 .ledger__args { font-size: 10px; color: var(--muted); margin-top: 3px; }
 .ledger__args code { background: var(--bg-3); padding: 0 4px; border-radius: 3px; margin: 0 2px; color: var(--text); }
-.ledger__replay { font-size: 11px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
-.ledger__replay.ok { color: var(--ok); }
-.ledger__replay.err { color: var(--bp); }
+.ledger__entry.open { border-color: var(--card-edge); box-shadow: var(--card-glow); }
+.ledger__replay-btn.active { background: var(--bg-3); color: var(--brass); box-shadow: inset 0 0 0 1px rgb(var(--brass-rgb) / 0.5); }
+
+/* Replay what-if loop: reconstruct one checkpoint, re-invoke with edited inputs,
+   diff the outcome against the as-captured baseline. */
+.exp { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; font-size: 11px; }
+.exp__label { display: inline-block; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); margin-right: 6px; }
+.exp__hint { font-size: 10px; margin-left: 6px; }
+.exp__baseline { color: var(--text); }
+
+.exp__form { display: flex; flex-direction: column; gap: 5px; background: var(--card-a); border: 1px solid var(--line); border-radius: 6px; padding: 7px; }
+.exp__row { display: flex; align-items: center; gap: 6px; }
+.exp__rl { flex: 0 0 78px; color: var(--muted); font-size: 10px; }
+.exp__method, .exp__arg { flex: 1; min-width: 0; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); border-radius: 4px; padding: 3px 6px; font-family: ui-monospace, monospace; font-size: 11px; }
+.exp__arg.edited { border-color: rgb(var(--brass-rgb) / 0.7); color: var(--brass-bright); }
+.exp__arg.bad { border-color: var(--bp); }
+.exp__arg.locked { background: transparent; border: none; color: var(--muted); padding-left: 0; }
+
+.exp__controls { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.exp__modes { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.exp__mode { background: var(--bg-2); color: var(--muted); border: none; padding: 3px 9px; font-size: 10px; cursor: pointer; }
+.exp__mode.on { background: var(--bg-3); color: var(--text); }
+.exp__mode.danger.on { background: rgb(var(--bp-rgb) / 0.18); color: var(--bp); box-shadow: inset 0 0 0 1px rgb(var(--bp-rgb) / 0.5); }
+.exp__run { margin-left: auto; background: var(--cta-grad); border: 1px solid rgb(var(--accent-rgb) / 0.5); color: #fff; border-radius: 5px; padding: 3px 12px; font-size: 11px; cursor: pointer; box-shadow: var(--cta-glow); }
+.exp__run:disabled { background: var(--bg-3); border-color: var(--line); color: var(--muted); box-shadow: none; cursor: not-allowed; }
+.exp__warn { font-size: 10px; color: var(--bp); }
+
+.exp__result { padding-top: 5px; border-top: 1px dashed var(--line); }
+.exp__val { color: var(--ok); }
+.exp__err { color: var(--bp); }
+.exp__diff { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; }
+.exp__diff.same { color: var(--muted); }
+.exp__diff.changed { color: var(--brass-bright); }
 
 .browser-pane__frame iframe { width: 100%; height: 100%; border: none; background: #fff; }
 .browser-pane__bar .reload { margin-left: auto; background: var(--bg-3); border: 1px solid var(--line); color: var(--text); border-radius: 5px; cursor: pointer; padding: 1px 7px; }

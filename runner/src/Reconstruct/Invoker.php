@@ -46,17 +46,27 @@ final class Invoker
      *        A ledger entry (with blobs) from Recorder::entry(), or an equivalent
      *        hand-authored mock entry.
      * @param 'peek'|'destructive' $mode  peek rolls back after landing; destructive commits.
+     * @param array<int,mixed>|null $argOverrides  authored replacements for captured
+     *        args, keyed by position. The what-if dial: reconstruct the *captured*
+     *        receiver, then poke it with different inputs. Overrides are tier-1
+     *        authored values (scalars/arrays) used directly; positions absent from
+     *        the map keep their captured value.
      *
-     * @return array{ok:bool,result?:mixed,error?:string,mode:string,committed:bool,reproducible:bool}
+     * @return array{ok:bool,result?:mixed,preview?:mixed,error?:string,mode:string,committed:bool,reproducible:bool}
      */
-    public function invoke(array $entry, string $method, string $mode = 'peek'): array
+    public function invoke(array $entry, string $method, string $mode = 'peek', ?array $argOverrides = null): array
     {
         try {
             $receiver = $this->materialize($entry['receiver']);
             if (!is_object($receiver)) {
                 return $this->fail('receiver did not reconstruct to an object', $mode);
             }
-            $args = array_map([$this, 'materialize'], $entry['args']);
+            $args = [];
+            foreach ($entry['args'] as $i => $snapshot) {
+                $args[$i] = ($argOverrides !== null && array_key_exists($i, $argOverrides))
+                    ? $argOverrides[$i]
+                    : $this->materialize($snapshot);
+            }
         } catch (\Throwable $e) {
             return $this->fail('reconstruction failed: ' . $e->getMessage(), $mode, reproducible: false);
         }
@@ -80,6 +90,7 @@ final class Invoker
             return [
                 'ok' => true,
                 'result' => $this->summarize($result),
+                'preview' => $this->preview($result),
                 'mode' => $mode,
                 'committed' => $committed,
                 'reproducible' => true,
@@ -137,6 +148,48 @@ final class Invoker
             return ['__type' => get_class($result)];
         }
         return ['__type' => get_debug_type($result)];
+    }
+
+    /**
+     * A JSON-safe, depth- and size-capped rendering of the invocation result, so
+     * the UI can diff a what-if outcome against the baseline. Unlike summarize()
+     * (which collapses to a type tag), this keeps actual values — and leans on
+     * toArray()/JsonSerializable so Eloquent models and Collections render as data.
+     */
+    private function preview(mixed $v, int $depth = 0): mixed
+    {
+        if ($v === null || is_scalar($v)) {
+            return $v;
+        }
+        if ($depth >= 4) {
+            return ['__truncated' => get_debug_type($v)];
+        }
+        if (is_array($v)) {
+            $out = [];
+            $i = 0;
+            foreach ($v as $k => $vv) {
+                if ($i++ >= 50) {
+                    $out['__more'] = count($v) - 50;
+                    break;
+                }
+                $out[$k] = $this->preview($vv, $depth + 1);
+            }
+            return $out;
+        }
+        if (is_object($v)) {
+            if (method_exists($v, 'toArray')) {
+                try {
+                    return ['__type' => get_class($v), 'value' => $this->preview($v->toArray(), $depth + 1)];
+                } catch (\Throwable) {
+                    // fall through to the other strategies
+                }
+            }
+            if ($v instanceof \JsonSerializable) {
+                return ['__type' => get_class($v), 'value' => $this->preview($v->jsonSerialize(), $depth + 1)];
+            }
+            return ['__type' => get_class($v), 'value' => $this->preview(get_object_vars($v), $depth + 1)];
+        }
+        return ['__type' => get_debug_type($v)];
     }
 
     private function fail(string $error, string $mode, bool $reproducible = true): array

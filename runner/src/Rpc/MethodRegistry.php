@@ -277,7 +277,7 @@ final class MethodRegistry
                 }
                 [$begin, $commit, $rollback] = $this->requireHost()->transactionHooks();
                 $invoker = new Invoker($begin, $commit, $rollback);
-                return $invoker->invoke($entry, $p['method'], $p['mode'] ?? 'peek');
+                return $invoker->invoke($entry, $p['method'], $p['mode'] ?? 'peek', $p['argOverrides'] ?? null);
             },
         ];
     }

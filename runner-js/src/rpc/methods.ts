@@ -149,8 +149,8 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       return { ...result, ledger: recorder.ledgerPublic(), breakpoints: breakpoint.hits() };
     },
 
-    'run.invoke': async (p: { seq: number; method: string; mode?: 'peek' | 'destructive' }) =>
-      new Invoker(currentHost).invokeSeq(p.seq, p.method, p.mode ?? 'peek'),
+    'run.invoke': async (p: { seq: number; method: string; mode?: 'peek' | 'destructive'; argOverrides?: Record<number, unknown> }) =>
+      new Invoker(currentHost).invokeSeq(p.seq, p.method, p.mode ?? 'peek', p.argOverrides ?? null),
 
     // CDP / framework-state ledger — the browser side. attach to a running page,
     // then snapshot/inject its framework state. Replay is state-injection.

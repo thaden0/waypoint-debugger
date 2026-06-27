@@ -133,8 +133,15 @@ describe('slice run + replay', () => {
     const replay = await new Invoker(host).invokeSeq(taxSeq, 'tax', 'peek');
     expect(replay.ok).toBe(true);
     expect(replay.result).toBe(1.55);
+    expect(replay.preview).toBe(1.55);
     expect(replay.committed).toBe(false);
     expect(host.txLog.at(-1)).toBe('rollback');
+
+    // What-if: re-invoke the same checkpoint with a different subtotal arg.
+    const whatIf = await new Invoker(host).invokeSeq(taxSeq, 'tax', 'peek', { 0: 100 });
+    expect(whatIf.ok).toBe(true);
+    expect(whatIf.result).toBe(10);
+    expect(whatIf.preview).toBe(10);
   });
 });
 
