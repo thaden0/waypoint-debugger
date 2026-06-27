@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { recorder } from '../capture/recorder.js';
+import { CdpTransport } from '../cdp/cdpTransport.js';
 import type { Host } from '../host/host.js';
 import { Invoker } from '../reconstruct/invoker.js';
 import { SliceRunner } from '../run/sliceRunner.js';
@@ -26,6 +27,13 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
   const waypoints = new WaypointInstrumenter();
   const root = path.resolve(projectRoot);
 
+  // CDP transport is created on attach (it connects to an external browser).
+  let cdp: CdpTransport | null = null;
+  const requireCdp = (): CdpTransport => {
+    if (!cdp) throw rpcError(-32020, 'not attached — call cdp.attach first');
+    return cdp;
+  };
+
   const resolve = (p: string): string => {
     const full = path.isAbsolute(p) ? p : path.join(root, p);
     const rel = path.relative(root, full);
@@ -45,7 +53,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       language: 'js',
       runtime: `node ${process.version}`,
       projectRoot: root,
-      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke'],
+      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp'],
       host: host.describe(),
     }),
 
@@ -101,6 +109,31 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
 
     'run.invoke': async (p: { seq: number; method: string; mode?: 'peek' | 'destructive' }) =>
       new Invoker(host).invokeSeq(p.seq, p.method, p.mode ?? 'peek'),
+
+    // CDP / framework-state ledger — the browser side. attach to a running page,
+    // then snapshot/inject its framework state. Replay is state-injection.
+    'cdp.attach': async (p: { wsUrl: string }) => {
+      if (cdp) await cdp.detach();
+      cdp = new CdpTransport();
+      await cdp.attach(p.wsUrl);
+      return { ok: true };
+    },
+    'cdp.snapshot': async () => ({ state: await requireCdp().snapshotFrameworkState() }),
+    'cdp.inject': async (p: { state: unknown }) => {
+      await requireCdp().injectFrameworkState(p.state);
+      return { ok: true };
+    },
+    'cdp.ledger': async () => ({ snapshots: await requireCdp().pullLedger() }),
+    'cdp.jump': async (p: { seq: number }) => {
+      await requireCdp().pullLedger();
+      return { state: await requireCdp().jump(p.seq) };
+    },
+    'cdp.scope': () => ({ paused: requireCdp().lastPause() }),
+    'cdp.detach': async () => {
+      await cdp?.detach();
+      cdp = null;
+      return { ok: true };
+    },
   };
 }
 

@@ -15,8 +15,10 @@ whole run wrapped in a transaction that rolls back by default.
 > workbench, unit + request run controls, ledger timeline) are all wired
 > end-to-end. A real Laravel app boots via `LaravelHost`; anything else falls back
 > to `BareHost`. A **JS/TS adapter** ([runner-js/](runner-js/)) speaks the same
-> JSON-RPC contract on the same port, so the same UI drives either language. Next:
-> the CDP / framework-state ledger for the browser side. See
+> JSON-RPC contract on the same port, so the same UI drives either language. The
+> browser side has a **CDP / framework-state ledger** (`cdp.*` methods): inject an
+> agent that rides a Redux store, capture state per action, and time-travel by
+> **state-injection, not execution-replay** — validated in a real Chrome. See
 > [docs/tech-design.md](docs/tech-design.md).
 
 ---

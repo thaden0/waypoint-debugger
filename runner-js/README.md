@@ -36,11 +36,34 @@ PROJECT_ROOT=/path/to/app npm run host   # ws://127.0.0.1:9778 (same port the UI
 
 With the JS host running, the UI connects exactly as it does to the PHP host.
 
-## Next milestone — CDP / framework-state ledger
+## CDP / framework-state ledger (the browser side)
 
-The node-side capture (vm SliceRunner + Recorder) is done. The browser side is
-scaffolded in [`src/transport/cdp.ts`](src/transport/cdp.ts): per the design, FE
-capture should ride at the **framework-state** level (Redux store / signals —
-already serializable), with replay as **state-injection, not execution-replay**.
-The Chrome DevTools Protocol gives the scope *read* for free; turning that into a
-restorable, injectable framework-state snapshot is the next piece.
+Implemented in [`src/cdp/`](src/cdp/). Per the design, FE capture rides at the
+**framework-state** level (a Redux store — already serializable), and replay is
+**state-injection, not execution-replay**:
+
+- [`agent.ts`](src/cdp/agent.ts) — a self-contained `waypointAgent(globalThis)`
+  injected into the page. It wraps the store's reducer (to honor a `SET_STATE`
+  action) and `dispatch` (to record a snapshot per action). `inject(state)` /
+  `jump(seq)` time-travel by dispatching `SET_STATE` — the framework re-renders;
+  nothing re-executes. This is Redux DevTools time-travel, distilled.
+- [`cdpClient.ts`](src/cdp/cdpClient.ts) — a minimal CDP client (commands by id +
+  events over the debugger WebSocket).
+- [`cdpTransport.ts`](src/cdp/cdpTransport.ts) — `attach` → inject agent;
+  `snapshotFrameworkState` / `injectFrameworkState` / `pullLedger` / `jump` via
+  `Runtime.evaluate`; `Debugger.paused` gives the VM-level scope *read* for free.
+- [`frameworkLedger.ts`](src/cdp/frameworkLedger.ts) — node-side mirror of the
+  in-page snapshot log.
+
+RPC methods: `cdp.attach` / `cdp.snapshot` / `cdp.inject` / `cdp.ledger` /
+`cdp.jump` / `cdp.scope` / `cdp.detach`.
+
+**Validated** against a mock CDP server (vitest `test/cdp.test.ts`) and against a
+**real Chrome** (the agent recorded `@@INIT → inc → login → inc` and `jump(1)`
+injected the recorded state to land back at `{count:1, user:null}`).
+
+### Next
+
+Per-framework store discovery (auto-detect Redux/Zustand/signals roots), the
+`replaceReducer`-free path for stores that don't expose it, and wiring the FE
+ledger into the UI's timeline alongside the node ledger.
