@@ -43,27 +43,16 @@ final class SliceRunner
     public function run(array $req): array
     {
         $source = $req['source'];
-        $swaps = $req['swaps'] ?? [];
-        $waypoints = $req['waypoints'] ?? [];
-        $breakpoints = $req['breakpoints'] ?? [];
-        $overrides = $req['overrides'] ?? [];
 
-        // Swaps applied in replace mode bake the mock expression in (no scope
-        // injection needed); indirect-mode swaps are a static-preview affordance.
-        if ($swaps !== []) {
-            $source = (new Swapper())->apply($source, $swaps)['source'];
-        }
-        // Variable overrides ("change a var on the fly") are applied on the
-        // swap-only source so their line numbers stay original.
-        if ($overrides !== []) {
-            $source = (new \Waypoint\Runner\Debug\OverrideInstrumenter())->apply($source, $overrides)['source'];
-        }
-        if ($waypoints !== []) {
-            $source = (new WaypointInstrumenter())->instrument($source, $waypoints)['source'];
-        }
-        if ($breakpoints !== []) {
-            $source = (new \Waypoint\Runner\Debug\BreakpointInstrumenter())->instrument($source, $breakpoints)['source'];
-        }
+        // One instrumentation pass keyed to the ORIGINAL line numbers, so swaps,
+        // overrides, waypoints and breakpoints can all combine without shifting
+        // each other's lines.
+        $source = (new \Waypoint\Runner\Instrument\Instrumenter())->apply($source, [
+            'swaps' => $req['swaps'] ?? [],
+            'overrides' => $req['overrides'] ?? [],
+            'waypoints' => $req['waypoints'] ?? [],
+            'breakpoints' => $req['breakpoints'] ?? [],
+        ]);
         \Waypoint\Runner\Debug\Breakpoint::reset();
         \Waypoint\Runner\Debug\Breakpoint::setMode($req['breakpointMode'] ?? 'halt');
 

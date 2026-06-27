@@ -286,16 +286,14 @@ final class InstrumentingStreamWrapper
 
     private static function instrument(string $source, array $cfg): string
     {
-        if (($cfg['swaps'] ?? []) !== []) {
-            $source = (new Swapper())->apply($source, $cfg['swaps'])['source'];
-        }
-        if (($cfg['waypoints'] ?? []) !== []) {
-            $source = (new WaypointInstrumenter())->instrument($source, $cfg['waypoints'])['source'];
-        }
-        if (($cfg['breakpoints'] ?? []) !== []) {
-            $source = (new BreakpointInstrumenter())->instrument($source, $cfg['breakpoints'])['source'];
-        }
-        return $source;
+        // One pass keyed to original lines (swaps + waypoints + breakpoints +
+        // overrides combine without shifting each other).
+        return (new Instrumenter())->apply($source, [
+            'swaps' => $cfg['swaps'] ?? [],
+            'waypoints' => $cfg['waypoints'] ?? [],
+            'breakpoints' => $cfg['breakpoints'] ?? [],
+            'overrides' => $cfg['overrides'] ?? [],
+        ]);
     }
 
     private function fakeStat(int $size): array

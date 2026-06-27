@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { applyEdits, type Edit } from '../instrument/edits.js';
 
 // Injects a breakpoint hook before the first executable statement on each
 // breakpoint line:
@@ -25,7 +26,12 @@ const STATEMENT_KINDS = new Set<ts.SyntaxKind>([
 ]);
 
 export class BreakpointInstrumenter {
-  instrument(source: string, breakpoints: Array<{ line: number; id?: string }>, path = 'inline.ts'): BreakpointInstrumentResult {
+  /** Hook inserts as position-based edits against the ORIGINAL source. */
+  editsWithMeta(source: string, breakpoints: Array<{ line: number; id?: string }>, path = 'inline.ts'): {
+    edits: Edit[];
+    placed: BreakpointInstrumentResult['placed'];
+    skipped: BreakpointInstrumentResult['skipped'];
+  } {
     const kind = path.endsWith('.tsx') || path.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, kind);
 
@@ -35,7 +41,7 @@ export class BreakpointInstrumenter {
     const placed: BreakpointInstrumentResult['placed'] = [];
     const skipped: BreakpointInstrumentResult['skipped'] = [];
     const seen = new Set<number>();
-    const edits: Array<{ pos: number; text: string }> = [];
+    const edits: Edit[] = [];
 
     const visit = (node: ts.Node) => {
       if (STATEMENT_KINDS.has(node.kind)) {
@@ -45,7 +51,8 @@ export class BreakpointInstrumenter {
           seen.add(line);
           const id = want.id ?? `bp:${line}`;
           const vars = inScopeNames(node, sf);
-          edits.push({ pos: node.getStart(sf), text: this.hook(id, vars, indentOf(source, node.getStart(sf))) });
+          const pos = node.getStart(sf);
+          edits.push({ start: pos, end: pos, text: this.hook(id, vars, indentOf(source, pos)) });
           placed.push({ id, line, vars });
         }
       }
@@ -56,12 +63,16 @@ export class BreakpointInstrumenter {
     for (const [line] of wantLines) {
       if (!seen.has(line)) skipped.push({ line, reason: 'no executable statement on this line' });
     }
+    return { edits, placed, skipped };
+  }
 
-    edits.sort((a, b) => b.pos - a.pos);
-    let out = source;
-    for (const e of edits) out = out.slice(0, e.pos) + e.text + out.slice(e.pos);
+  edits(source: string, breakpoints: Array<{ line: number; id?: string }>, path = 'inline.ts'): Edit[] {
+    return this.editsWithMeta(source, breakpoints, path).edits;
+  }
 
-    return { source: out, placed, skipped };
+  instrument(source: string, breakpoints: Array<{ line: number; id?: string }>, path = 'inline.ts'): BreakpointInstrumentResult {
+    const { edits, placed, skipped } = this.editsWithMeta(source, breakpoints, path);
+    return { source: applyEdits(source, edits), placed, skipped };
   }
 
   private hook(id: string, vars: string[], indent: string): string {

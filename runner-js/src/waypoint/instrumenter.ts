@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { WaypointSpec } from '../types.js';
+import { applyEdits, type Edit } from '../instrument/edits.js';
 
 // Injects capture hooks at the entry of selected methods/functions — the JS
 // analog of the PHP WaypointInstrumenter. On every entry it records
@@ -18,16 +19,14 @@ export interface InstrumentResult {
 }
 
 export class WaypointInstrumenter {
-  instrument(source: string, waypoints: WaypointSpec[], path = 'inline.ts'): InstrumentResult {
+  /** Capture-hook inserts as position-based edits against the ORIGINAL source. */
+  edits(source: string, waypoints: WaypointSpec[], path = 'inline.ts'): Edit[] {
     const kind = path.endsWith('.tsx') || path.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, kind);
     const byLine = new Map<number, WaypointSpec>();
     for (const w of waypoints) byLine.set(w.line, w);
 
-    const instrumented: InstrumentResult['instrumented'] = [];
-    const skipped: InstrumentResult['skipped'] = [];
-    const inserts: Array<{ pos: number; text: string }> = [];
-
+    const edits: Edit[] = [];
     const visit = (node: ts.Node, className: string | null) => {
       let nextClass = className;
       if (ts.isClassDeclaration(node) && node.name) nextClass = node.name.text;
@@ -35,30 +34,22 @@ export class WaypointInstrumenter {
       if (ts.isMethodDeclaration(node) || ts.isFunctionDeclaration(node)) {
         const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
         const wp = byLine.get(line);
-        if (wp) {
+        if (wp && node.body && ts.isBlock(node.body)) {
           const name = node.name ? node.name.getText(sf) : '(anonymous)';
           const owner = ts.isMethodDeclaration(node) ? (className ?? '(global)') : '(global)';
           const id = wp.id ?? `${owner}::${name}`;
-          if (node.body && ts.isBlock(node.body)) {
-            const pos = node.body.getStart(sf) + 1; // just after '{'
-            inserts.push({
-              pos,
-              text: ` globalThis.__wpCapture(${JSON.stringify(id)}, typeof this === 'undefined' ? null : this, Array.from(arguments));`,
-            });
-            instrumented.push({ id, line, method: `${owner}::${name}` });
-          } else {
-            skipped.push({ line, reason: 'no block body (arrow/abstract)' });
-          }
+          const pos = node.body.getStart(sf) + 1; // just after '{'
+          edits.push({ start: pos, end: pos, text: ` globalThis.__wpCapture(${JSON.stringify(id)}, typeof this === 'undefined' ? null : this, Array.from(arguments));` });
         }
       }
       ts.forEachChild(node, (c) => visit(c, nextClass));
     };
     visit(sf, null);
+    return edits;
+  }
 
-    inserts.sort((a, b) => b.pos - a.pos);
-    let out = source;
-    for (const ins of inserts) out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
-
-    return { source: out, instrumented, skipped };
+  instrument(source: string, waypoints: WaypointSpec[], path = 'inline.ts'): InstrumentResult {
+    const edits = this.edits(source, waypoints, path);
+    return { source: applyEdits(source, edits), instrumented: edits.map((_, i) => ({ id: String(i), line: 0, method: '' })), skipped: [] };
   }
 }

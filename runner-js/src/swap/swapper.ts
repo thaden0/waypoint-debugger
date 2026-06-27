@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { SwapSpec } from '../types.js';
+import { applyEdits, type Edit } from '../instrument/edits.js';
 
 export const SWAP_MAP_VAR = '__waypointSwaps';
 
@@ -10,14 +11,14 @@ export const SWAP_MAP_VAR = '__waypointSwaps';
 //   indirect: const u = User.findUnique(...)  ->  const u = __waypointSwaps['key'] ?? (User.findUnique(...))
 
 export class Swapper {
-  apply(source: string, swaps: SwapSpec[], path = 'inline.ts'): { source: string; applied: number; errors: string[] } {
+  /** Position-based edits against the ORIGINAL source (for the unified pass). */
+  edits(source: string, swaps: SwapSpec[], path = 'inline.ts'): Edit[] {
     const kind = path.endsWith('.tsx') || path.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, kind);
     const byLine = new Map<number, SwapSpec>();
     for (const s of swaps) byLine.set(s.line, s);
 
-    const edits: Array<{ start: number; end: number; text: string }> = [];
-    const errors: string[] = [];
+    const edits: Edit[] = [];
 
     const initializerFor = (node: ts.Node): ts.Expression | undefined => {
       if (ts.isVariableStatement(node)) {
@@ -37,26 +38,19 @@ export class Swapper {
       if (swap) {
         const init = initializerFor(node);
         if (init) {
-          try {
-            edits.push({ start: init.getStart(sf), end: init.getEnd(), text: this.replacement(swap, init.getText(sf)) });
-            byLine.delete(line); // one swap per line
-          } catch (e) {
-            errors.push(`line ${line}: ${(e as Error).message}`);
-          }
+          edits.push({ start: init.getStart(sf), end: init.getEnd(), text: this.replacement(swap, init.getText(sf)) });
+          byLine.delete(line); // one swap per line
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
+    return edits;
+  }
 
-    // Apply edits from the end so earlier offsets stay valid.
-    edits.sort((a, b) => b.start - a.start);
-    let out = source;
-    for (const e of edits) {
-      out = out.slice(0, e.start) + e.text + out.slice(e.end);
-    }
-
-    return { source: out, applied: edits.length, errors };
+  apply(source: string, swaps: SwapSpec[], path = 'inline.ts'): { source: string; applied: number; errors: string[] } {
+    const edits = this.edits(source, swaps, path);
+    return { source: applyEdits(source, edits), applied: edits.length, errors: [] };
   }
 
   private replacement(swap: SwapSpec, original: string): string {

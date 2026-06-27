@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { applyEdits, type Edit } from '../instrument/edits.js';
 
 // "Change a variable on the fly" for JS/TS. Unlike PHP (where we inject a
 // reassignment before the line), JS can't reassign a `const`, so instead we
@@ -17,38 +18,32 @@ export interface OverrideSpec {
 }
 
 export class OverrideInstrumenter {
-  apply(
-    source: string,
-    overrides: OverrideSpec[],
-    path = 'inline.ts',
-  ): { source: string; applied: Array<{ var: string }>; errors: string[] } {
+  private editsWithMeta(source: string, overrides: OverrideSpec[], path = 'inline.ts'): { edits: Edit[]; applied: Array<{ var: string }> } {
     const kind = path.endsWith('.tsx') || path.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, kind);
 
-    const edits: Array<{ start: number; end: number; text: string }> = [];
+    const edits: Edit[] = [];
     const applied: Array<{ var: string }> = [];
-    const errors: string[] = [];
-
     for (const o of overrides) {
       const stmt = firstStatementOnLine(sf, o.line);
-      if (!stmt) {
-        errors.push(`no statement on line ${o.line}`);
-        continue;
-      }
-      const fn = enclosingFunction(stmt);
+      const fn = stmt ? enclosingFunction(stmt) : undefined;
       const decl = fn ? findDeclaration(fn, o.var, sf) : undefined;
-      if (!decl || !decl.initializer) {
-        errors.push(`no initialized declaration of ${o.var} in scope`);
-        continue;
+      if (decl?.initializer) {
+        edits.push({ start: decl.initializer.getStart(sf), end: decl.initializer.getEnd(), text: `(${o.expression})` });
+        applied.push({ var: o.var });
       }
-      edits.push({ start: decl.initializer.getStart(sf), end: decl.initializer.getEnd(), text: `(${o.expression})` });
-      applied.push({ var: o.var });
     }
+    return { edits, applied };
+  }
 
-    edits.sort((a, b) => b.start - a.start);
-    let out = source;
-    for (const e of edits) out = out.slice(0, e.start) + e.text + out.slice(e.end);
-    return { source: out, applied, errors };
+  /** Declaration-initializer rewrites as edits against the ORIGINAL source. */
+  edits(source: string, overrides: OverrideSpec[], path = 'inline.ts'): Edit[] {
+    return this.editsWithMeta(source, overrides, path).edits;
+  }
+
+  apply(source: string, overrides: OverrideSpec[], path = 'inline.ts'): { source: string; applied: Array<{ var: string }>; errors: string[] } {
+    const { edits, applied } = this.editsWithMeta(source, overrides, path);
+    return { source: applyEdits(source, edits), applied, errors: [] };
   }
 }
 
