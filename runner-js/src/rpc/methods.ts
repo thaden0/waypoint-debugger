@@ -12,6 +12,7 @@ import { StructureExtractor } from '../structure/extractor.js';
 import { ProblemScanner } from '../swap/problemScanner.js';
 import { Swapper } from '../swap/swapper.js';
 import { WaypointInstrumenter } from '../waypoint/instrumenter.js';
+import { introspectExpressRoutes } from '../express/routes.js';
 
 // Same JSON-RPC method names as the PHP runner — this is the JS adapter's
 // realization of the shared per-language contract. Point the UI at this server
@@ -88,10 +89,10 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       return orch.down();
     },
 
-    // API console. The JS adapter has no booted router yet, so routes() is empty
-    // (a framework introspector — Express/Next/Nest — is future work); external
-    // sends work, and the collection persists to the same .waypoint/api.json.
-    'api.routes': () => ({ routes: [] }),
+    // API console. routes come from static Express introspection (the JS adapter's
+    // RouteProvider — proving the seam generalizes); external sends work, and the
+    // collection persists to the same .waypoint/api.json.
+    'api.routes': () => ({ routes: introspectExpressRoutes(root) }),
     'api.send': async (p: {
       target?: string;
       method?: string;
