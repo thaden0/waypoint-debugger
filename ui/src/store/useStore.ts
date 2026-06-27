@@ -328,8 +328,13 @@ export const useStore = create<State>((set, get) => ({
   },
 
   replay: async (seq, method) => {
+    // Whole-request entries carry a reconstruction blob (their subprocess has
+    // exited) — pass the full entry. Unit-run entries live in the resident
+    // ledger — replay by seq.
+    const entry = get().ledger.find((e) => e.seq === seq);
+    const params = entry?.receiver?.blob ? { entry, method, mode: 'peek' } : { seq, method, mode: 'peek' };
     try {
-      const result = await rpc<InvokeResult>('run.invoke', { seq, method, mode: 'peek' });
+      const result = await rpc<InvokeResult>('run.invoke', params);
       set({ lastInvoke: { seq, result } });
     } catch (e) {
       set({ lastInvoke: { seq, result: { ok: false, error: (e as Error).message, mode: 'peek', committed: false, reproducible: false } } });

@@ -210,8 +210,17 @@ final class MethodRegistry
             },
 
             // Reconstruct + invoke from a captured (or authored) ledger entry.
+            // A passed `entry` (e.g. from a whole-request run, whose subprocess has
+            // exited) carries base64 blobs and is decoded before reconstruction;
+            // otherwise the resident ledger is keyed by seq.
             'run.invoke' => function (array $p) {
-                $entry = isset($p['entry']) ? $p['entry'] : Recorder::entry((int) ($p['seq'] ?? -1));
+                if (isset($p['entry'])) {
+                    $entry = $p['entry'];
+                    $entry['receiver'] = Recorder::decodeSnapshot($entry['receiver']);
+                    $entry['args'] = array_map([Recorder::class, 'decodeSnapshot'], $entry['args']);
+                } else {
+                    $entry = Recorder::entry((int) ($p['seq'] ?? -1));
+                }
                 if ($entry === null) {
                     throw new RpcException(-32010, 'no ledger entry for seq ' . ($p['seq'] ?? '?'));
                 }

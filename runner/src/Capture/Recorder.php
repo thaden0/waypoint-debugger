@@ -139,6 +139,43 @@ final class Recorder
         return array_map([self::class, 'publicEntry'], self::$ledger);
     }
 
+    /**
+     * Ledger including reconstruction blobs (base64-encoded for JSON transport).
+     * Used by the whole-request subprocess so a captured waypoint can be replayed
+     * after the subprocess exits — the resident host reconstructs from the blob.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function ledgerFull(): array
+    {
+        return array_map(static function (array $e): array {
+            $e['receiver'] = self::encodeSnapshot($e['receiver']);
+            $e['args'] = array_map([self::class, 'encodeSnapshot'], $e['args']);
+            return $e;
+        }, self::$ledger);
+    }
+
+    /** @return array<string,mixed> */
+    private static function encodeSnapshot(array $snapshot): array
+    {
+        if (isset($snapshot['blob'])) {
+            $snapshot['blob'] = base64_encode($snapshot['blob']);
+        }
+        return $snapshot;
+    }
+
+    /** Decode a snapshot whose blob arrived base64-encoded (a passed entry). */
+    public static function decodeSnapshot(array $snapshot): array
+    {
+        if (isset($snapshot['blob']) && is_string($snapshot['blob'])) {
+            $decoded = base64_decode($snapshot['blob'], true);
+            if ($decoded !== false) {
+                $snapshot['blob'] = $decoded;
+            }
+        }
+        return $snapshot;
+    }
+
     /** @return array<string,mixed> */
     private static function publicView(array $snapshot): array
     {

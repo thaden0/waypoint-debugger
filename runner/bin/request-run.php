@@ -91,7 +91,9 @@ try {
         'result' => $result['result'] ?? null,
         'response' => $result['response'] ?? null,
         'error' => $result['error'] ?? null,
-        'ledger' => Recorder::ledger(),
+        // Full ledger (with base64 blobs) so the resident host can replay a
+        // captured waypoint after this subprocess exits.
+        'ledger' => Recorder::ledgerFull(),
         'breakpoints' => Breakpoint::hits(),
     ]]);
 } catch (\Throwable $e) {

@@ -116,6 +116,7 @@ export interface Snapshot {
   type: string;
   preview: unknown;
   note?: string;
+  blob?: string; // base64 reconstruction blob (present for whole-request entries)
 }
 
 export interface LedgerEntry {

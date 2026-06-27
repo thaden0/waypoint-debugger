@@ -106,6 +106,65 @@ final class IncludeInstrumentationTest extends TestCase
         $this->assertContains('PricingService::tax', $streamed);
     }
 
+    public function testWholeRequestLedgerCarriesBlobsAndReplays(): void
+    {
+        $runnerDir = dirname(__DIR__, 2);
+        $fixtureApp = dirname(__DIR__) . '/fixtures/app';
+        $serviceSrc = (string) file_get_contents($fixtureApp . '/Domain/PricingService.php');
+        $controllerSrc = (string) file_get_contents($fixtureApp . '/Http/CheckoutController.php');
+
+        $config = [
+            'projectRoot' => dirname(__DIR__) . '/fixtures',
+            'driver' => 'bare',
+            'psr4' => ['App\\' => $fixtureApp],
+            'targets' => [
+                'app/Http/CheckoutController.php' => ['waypoints' => [['line' => $this->lineOf($controllerSrc, 'function checkout(')]]],
+                'app/Domain/PricingService.php' => ['waypoints' => [['line' => $this->lineOf($serviceSrc, 'function tax(')]]],
+            ],
+            'entry' => [
+                'kind' => 'call',
+                'class' => 'App\\Http\\CheckoutController',
+                'method' => 'checkout',
+                'args' => [[['price' => 100.0], ['price' => 50.0]]],
+            ],
+        ];
+
+        $result = (new RequestRunner($runnerDir))->run($config);
+        $this->assertTrue($result['ok'], $result['error'] ?? 'run failed');
+
+        // The returned ledger carries base64 reconstruction blobs.
+        $tax = null;
+        foreach ($result['ledger'] as $e) {
+            if ($e['id'] === 'PricingService::tax') {
+                $tax = $e;
+            }
+        }
+        $this->assertNotNull($tax, 'tax() captured');
+        $this->assertIsString($tax['receiver']['blob']);
+        $this->assertNotFalse(base64_decode($tax['receiver']['blob'], true));
+
+        // Replay it the way run.invoke does: decode the blobs, reconstruct, invoke.
+        // (Register the app autoloader so the receiver class resolves in-process,
+        // as the resident booted host would have it.)
+        spl_autoload_register(function (string $class) use ($fixtureApp): void {
+            if (str_starts_with($class, 'App\\')) {
+                $f = $fixtureApp . '/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+                if (is_file($f)) {
+                    require_once $f;
+                }
+            }
+        });
+
+        $entry = [
+            'receiver' => \Waypoint\Runner\Capture\Recorder::decodeSnapshot($tax['receiver']),
+            'args' => array_map([\Waypoint\Runner\Capture\Recorder::class, 'decodeSnapshot'], $tax['args']),
+        ];
+        $out = (new \Waypoint\Runner\Reconstruct\Invoker())->invoke($entry, 'tax', 'peek');
+
+        $this->assertTrue($out['ok'], $out['error'] ?? 'invoke failed');
+        $this->assertEquals(30.0, $out['result']); // subtotal 150 * 0.2 tax rate
+    }
+
     private function lineOf(string $source, string $needle): int
     {
         foreach (explode("\n", $source) as $i => $line) {
