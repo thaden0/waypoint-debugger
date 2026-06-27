@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useStore, type NetworkRecord } from '../store/useStore';
 import { VariablesPanel, ConsolePanel } from './RunPanels';
 
@@ -43,6 +43,11 @@ function NetworkPanel() {
   const network = useStore((s) => s.network);
   const all = useStore((s) => s.networkAll);
   const setAll = useStore((s) => s.setNetworkAll);
+  const traceRequest = useStore((s) => s.traceRequest);
+  const traces = useStore((s) => s.traces);
+  const tracing = useStore((s) => s.tracing);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // Live-poll the captured network while attached.
   useEffect(() => {
@@ -75,17 +80,48 @@ function NetworkPanel() {
             <div className="muted net__empty">No requests yet — interact with your app.</div>
           ) : (
             <table>
-              <thead><tr><th>method</th><th>endpoint</th><th>type</th><th>status</th><th>time</th></tr></thead>
+              <thead><tr><th>method</th><th>endpoint</th><th>type</th><th>status</th><th>time</th><th>backend</th></tr></thead>
               <tbody>
-                {network.map((r: NetworkRecord) => (
-                  <tr key={r.requestId} className={r.failed ? 'failed' : ''}>
-                    <td className={'net-verb v-' + r.method.toLowerCase()}>{r.method}</td>
-                    <td className="net__ep" title={r.url}>{shortUrl(r.url)}</td>
-                    <td className="muted">{r.type}</td>
-                    <td className={'net__status s-' + Math.floor((r.status ?? 0) / 100)}>{r.failed ? '✕' : r.status ?? '…'}</td>
-                    <td className="muted">{r.durationMs != null ? `${r.durationMs}ms` : '—'}</td>
-                  </tr>
-                ))}
+                {network.map((r: NetworkRecord) => {
+                  const trace = traces[r.requestId];
+                  const open = expanded.has(r.requestId);
+                  return (
+                    <Fragment key={r.requestId}>
+                      <tr className={r.failed ? 'failed' : ''}>
+                        <td className={'net-verb v-' + r.method.toLowerCase()}>{r.method}</td>
+                        <td className="net__ep" title={r.url}>{shortUrl(r.url)}</td>
+                        <td className="muted">{r.type}</td>
+                        <td className={'net__status s-' + Math.floor((r.status ?? 0) / 100)}>{r.failed ? '✕' : r.status ?? '…'}</td>
+                        <td className="muted">{r.durationMs != null ? `${r.durationMs}ms` : '—'}</td>
+                        <td className="net__be">
+                          {tracing === r.requestId ? (
+                            <span className="muted">…</span>
+                          ) : trace ? (
+                            trace.ok ? (
+                              <button className="net__trace-link" onClick={() => toggle(r.requestId)}>
+                                {trace.ledgerCount > 0 ? `${open ? '▾' : '▸'} ${trace.ledgerCount} waypoint${trace.ledgerCount > 1 ? 's' : ''}` : `${trace.status ?? 'ok'} · no waypoints`}
+                              </button>
+                            ) : (
+                              <span className="net__trace-err" title={trace.error}>trace failed</span>
+                            )
+                          ) : (
+                            <button className="net__trace" onClick={() => traceRequest(r)} title="Re-run this request through the instrumented backend">→ trace</button>
+                          )}
+                        </td>
+                      </tr>
+                      {open && trace?.ledger && trace.ledger.length > 0 && (
+                        <tr className="net__trace-row">
+                          <td colSpan={6}>
+                            <div className="net__trace-detail">
+                              <span className="muted">backend trace:</span>
+                              {trace.ledger.map((e) => <code key={e.seq} className="net__wp">{e.id}</code>)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

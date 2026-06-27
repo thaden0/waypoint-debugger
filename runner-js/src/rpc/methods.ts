@@ -234,6 +234,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
     },
     'cdp.scope': () => ({ paused: requireCdp().lastPause() }),
     'cdp.network': (p: { all?: boolean }) => ({ requests: requireCdp().networkLog(p?.all ?? false) }),
+    'cdp.requestBody': async (p: { requestId: string }) => ({ body: await requireCdp().requestBody(p.requestId) }),
     'cdp.network.clear': () => {
       requireCdp().clearNetwork();
       return { ok: true };

@@ -27,6 +27,8 @@ export interface NetworkRecord {
   startedMs: number;
   durationMs?: number;
   failed?: string;
+  reqHeaders?: Record<string, string>;
+  hasBody?: boolean;
 }
 
 const API_TYPES = new Set(['XHR', 'Fetch']);
@@ -108,6 +110,8 @@ export class CdpTransport {
         url: p.request?.url ?? '',
         type: p.type ?? 'Other',
         startedMs: (p.timestamp ?? 0) * 1000,
+        reqHeaders: p.request?.headers ?? {},
+        hasBody: !!p.request?.hasPostData || p.request?.postData != null,
       });
     });
     this.client.on('Network.responseReceived', (p: any) => {
@@ -139,6 +143,16 @@ export class CdpTransport {
 
   clearNetwork(): void {
     this.network.clear();
+  }
+
+  /** The request body for a captured request (for re-running it through the host). */
+  async requestBody(requestId: string): Promise<string | null> {
+    try {
+      const r = await this.client.send<{ postData?: string }>('Network.getRequestPostData', { requestId });
+      return r?.postData ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async detach(): Promise<void> {

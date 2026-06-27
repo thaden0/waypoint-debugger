@@ -722,11 +722,16 @@ not a URL/time guess.
   target from an `http://` CDP base; agent injection is best-effort.
 - **Tabbed dock:** `DockPanel` — Variables (BE) · Console · Network (FE), the network tab
   shown when a cdp-capable frontend runner is connected; live-polls `cdp.network`.
+- **World-B correlation:** each FE network row can be **traced through the instrumented
+  host** — the request body comes from the frontend runner (CDP `getRequestPostData`),
+  the request is re-run through the backend via `api.send` (in-process, peek-rolled-back)
+  with the placed waypoints, and the exact BE waypoint trace links to the row (expandable).
+  Deterministic by re-execution rather than URL/time guessing; needs no repointing of the
+  live frontend. (A live HTTP-serving-host variant — browser points at the host — remains
+  a future deepening.)
 
-**Remaining:** World-B correlation itself (route live FE traffic through the host and link
-each network row to the BE waypoint trace it caused); per-runner FE/BE *analysis* panes
-(today the main views are backend-centric); FE variable/state tab (CDP framework-state)
-beside Network.
+**Remaining:** per-runner FE/BE *analysis* panes (today the main views are backend-centric);
+a FE variable/state tab (CDP framework-state) beside Network.
 
 ---
 

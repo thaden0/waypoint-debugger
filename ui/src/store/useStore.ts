@@ -106,6 +106,8 @@ interface State {
   cdpUrl: string;
   network: NetworkRecord[];
   networkAll: boolean;
+  traces: Record<string, TraceResult>;
+  tracing: string | null;
   browserSrc: string | null;
   log: string[];
 
@@ -157,6 +159,7 @@ interface State {
   attachBrowser: () => Promise<void>;
   detachBrowser: () => Promise<void>;
   pollNetwork: () => Promise<void>;
+  traceRequest: (rec: NetworkRecord) => Promise<void>;
 }
 
 export interface NetworkRecord {
@@ -168,6 +171,17 @@ export interface NetworkRecord {
   mimeType?: string;
   durationMs?: number;
   failed?: string;
+  reqHeaders?: Record<string, string>;
+  hasBody?: boolean;
+}
+
+// The backend trace for one FE request — re-run through the instrumented host.
+export interface TraceResult {
+  ok: boolean;
+  status?: number;
+  ledger?: LedgerEntry[];
+  ledgerCount: number;
+  error?: string;
 }
 
 export interface WorkspaceProject {
@@ -280,6 +294,8 @@ export const useStore = create<State>((set, get) => ({
   cdpUrl: 'http://localhost:9222',
   network: [],
   networkAll: false,
+  traces: {},
+  tracing: null,
   browserSrc: null,
   log: [],
 
@@ -787,7 +803,55 @@ export const useStore = create<State>((set, get) => ({
       set({ network: res.requests });
     } catch { /* transient */ }
   },
+
+  // World-B correlation: take a captured FE request and re-run it through the
+  // instrumented backend host (api.send in-process, peek-rolled-back), linking the
+  // exact BE waypoint trace to this network row. Body comes from the frontend
+  // runner (CDP), the trace from the backend — both runners, one story.
+  traceRequest: async (rec) => {
+    set({ tracing: rec.requestId });
+    try {
+      let body: string | undefined;
+      if (rec.method !== 'GET' && rec.method !== 'HEAD' && rec.hasBody) {
+        const r = await rpcFrontend<{ body: string | null }>('cdp.requestBody', { requestId: rec.requestId }).catch(() => ({ body: null }));
+        body = r.body ?? undefined;
+      }
+      const u = new URL(rec.url);
+      const headers: Record<string, string> = {};
+      for (const want of ['content-type', 'authorization', 'accept', 'cookie']) {
+        const key = Object.keys(rec.reqHeaders ?? {}).find((h) => h.toLowerCase() === want);
+        if (key) headers[key] = rec.reqHeaders![key];
+      }
+      set({ ledger: [], breakpointHits: [] });
+      const res = await rpc<{ ok: boolean; captured?: boolean; response?: { status?: number }; error?: string; ledger?: LedgerEntry[]; breakpoints?: BreakpointHit[] }>('api.send', {
+        target: 'inprocess',
+        method: rec.method,
+        uri: u.pathname + u.search,
+        headers,
+        body,
+        targets: targetsFromMarkers(get().markers, get().swaps),
+      });
+      const trace: TraceResult = res.ok
+        ? { ok: true, status: res.response?.status, ledger: res.ledger, ledgerCount: res.ledger?.length ?? 0 }
+        : { ok: false, error: res.error, ledgerCount: 0 };
+      if (res.ledger) set({ ledger: res.ledger, breakpointHits: res.breakpoints ?? [] });
+      set((s) => ({ traces: { ...s.traces, [rec.requestId]: trace } }));
+    } finally {
+      set({ tracing: null });
+    }
+  },
 }));
+
+// Build run.request/api.send capture targets from the editor markers — the same
+// shape used by Run-request and the API console.
+function targetsFromMarkers(markers: GutterMarker[], swaps: SwapSite[]) {
+  const targets: Record<string, { waypoints: { line: number }[]; swaps: { line: number; mode: string; expression?: string }[]; breakpoints: { line: number }[] }> = {};
+  const ensure = (p: string) => (targets[p] ??= { waypoints: [], swaps: [], breakpoints: [] });
+  for (const m of markers.filter((mk) => mk.kind === 'waypoint')) ensure(m.path).waypoints.push({ line: m.line });
+  for (const m of markers.filter((mk) => mk.kind === 'breakpoint')) ensure(m.path).breakpoints.push({ line: m.line });
+  for (const s of swaps) ensure(s.path).swaps.push({ line: s.line, mode: 'replace', expression: s.expression });
+  return targets;
+}
 
 // Dev-only handle: lets you poke the live store from the console (and drives
 // end-to-end UI checks). Stripped from production behaviour by the DEV guard.
