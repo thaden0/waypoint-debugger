@@ -7,6 +7,7 @@ namespace Waypoint\Runner\Rpc;
 use Waypoint\Runner\Capture\Recorder;
 use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostInterface;
+use Waypoint\Runner\Orm\ModelConsole;
 use Waypoint\Runner\Reconstruct\Invoker;
 use Waypoint\Runner\Run\RequestRunner;
 use Waypoint\Runner\Run\SliceRunner;
@@ -62,7 +63,7 @@ final class MethodRegistry
                 'projectRoot' => $this->projectRoot,
                 'capabilities' => array_merge(
                     ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'api'],
-                    $this->host !== null ? ['host', 'run', 'invoke'] : []
+                    $this->host !== null ? ['host', 'run', 'invoke', 'orm'] : []
                 ),
                 'host' => $this->host?->describe(),
             ],
@@ -203,6 +204,58 @@ final class MethodRegistry
     }
 
     /**
+     * ORM data console: work with the project's data through its own Eloquent
+     * models, evaluated in the booted host. A query is real PHP, transaction-
+     * guarded (peek rolls back, commit persists). models.capture bridges a result
+     * into the ledger so a queried record can drive the replay what-if loop.
+     *
+     * @return array<string,callable>
+     */
+    private function ormMethods(): array
+    {
+        $console = fn () => new ModelConsole($this->projectRoot, $this->requireHost());
+        return [
+            'models.list' => fn () => ['models' => $console()->listModels()],
+            'models.query' => fn (array $p) => $console()->query((string) ($p['expr'] ?? ''), (bool) ($p['commit'] ?? false)),
+            'models.table' => fn (array $p) => $console()->table(
+                (string) ($p['model'] ?? ''),
+                (int) ($p['page'] ?? 1),
+                (int) ($p['perPage'] ?? 50),
+                $p['filters'] ?? []
+            ),
+            'models.relationships' => fn (array $p) => ['relationships' => $console()->relationships((string) ($p['model'] ?? ''))],
+            'models.alter' => fn (array $p) => $console()->alter((string) ($p['model'] ?? ''), $p['props'] ?? []),
+            'models.migrate' => fn (array $p) => $console()->migrate((bool) ($p['run'] ?? false)),
+
+            // Replay bridge: evaluate (peek), and if the result is an object, snapshot
+            // it into the ledger as a captured entry so it can be re-invoked with
+            // what-if inputs in the replay loop.
+            'models.capture' => function (array $p) use ($console) {
+                $res = $console()->query((string) ($p['expr'] ?? ''), false);
+                if (($res['ok'] ?? false) !== true) {
+                    return $res;
+                }
+                $this->requireHost();
+                Recorder::reset();
+                $expr = trim(rtrim((string) ($p['expr'] ?? ''), ';'));
+                // Re-evaluate to get the live object (Preview already rendered a copy).
+                try {
+                    /** @psalm-suppress ForbiddenCode */
+                    $obj = eval("return {$expr};");
+                } catch (\Throwable $e) {
+                    return ['ok' => false, 'error' => $e->getMessage()];
+                }
+                if (!is_object($obj)) {
+                    return ['ok' => false, 'error' => 'result is not a single object — capture needs a model instance'];
+                }
+                $id = 'Query::' . (new \ReflectionClass($obj))->getShortName();
+                Recorder::capture($id, $obj, []);
+                return ['ok' => true, 'ledger' => Recorder::ledger(), 'id' => $id];
+            },
+        ];
+    }
+
+    /**
      * Live-run methods, present on the resident host process. They resolve the
      * host at call time (via requireHost) so project.open can re-point it.
      *
@@ -210,7 +263,7 @@ final class MethodRegistry
      */
     private function hostMethods(): array
     {
-        return [
+        return $this->ormMethods() + [
             'host.describe' => fn () => $this->requireHost()->describe(),
             'host.boot' => function () {
                 $host = $this->requireHost();
