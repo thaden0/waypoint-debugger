@@ -29,12 +29,21 @@ final class Orchestrator
 
     public static function forRoot(string $root): ?self
     {
-        $path = ComposeProject::find($root);
+        // Honor the project's chosen compose file (e.g. compose.dev.yaml), else
+        // auto-pick (standard name → *dev* → first candidate).
+        $prefer = \Waypoint\Runner\Module\ProjectConfig::read($root)['docker']['compose'] ?? null;
+        $path = ComposeProject::find($root, $prefer);
         if ($path === null) {
             return null;
         }
         $project = preg_replace('/[^a-z0-9]/', '', strtolower(basename($root))) ?: 'app';
         return new self($path, $project);
+    }
+
+    /** @return list<string> basenames of all compose files in the root */
+    public static function composeFiles(string $root): array
+    {
+        return array_map('basename', ComposeProject::candidates($root));
     }
 
     /**

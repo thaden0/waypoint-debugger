@@ -176,6 +176,12 @@ final class MethodRegistry
                 }
                 return $orch->down();
             },
+            // All compose files in the project (incl. compose.dev/prod.yaml) + the
+            // one currently selected — for the settings Docker picker.
+            'docker.composeFiles' => fn () => [
+                'files' => Orchestrator::composeFiles($this->projectRoot),
+                'selected' => ProjectConfig::read($this->projectRoot)['docker']['compose'],
+            ],
 
             // API console persistence: saved requests + environments live in the
             // project app-file (.waypoint/api.json) so a team can share them.

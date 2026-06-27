@@ -93,6 +93,7 @@ interface State {
   settingsOpen: boolean;
   modules: ModulesAvailable | null;
   projectConfig: ProjectConfigShape | null;
+  composeFiles: string[];
   savingSettings: boolean;
   projects: WorkspaceProject[];
   projectStatus: ProjectStatus | null;
@@ -168,6 +169,7 @@ export interface ModulesAvailable {
 export interface ProjectConfigShape {
   module: string | null;
   providers: { orm: string | null; routes: string | null };
+  docker: { compose: string | null };
 }
 
 // Transport router: prefer the WS host (full run capability), fall back to HTTP
@@ -237,6 +239,7 @@ export const useStore = create<State>((set, get) => ({
   settingsOpen: false,
   modules: null,
   projectConfig: null,
+  composeFiles: [],
   savingSettings: false,
   projects: [],
   projectStatus: null,
@@ -646,11 +649,12 @@ export const useStore = create<State>((set, get) => ({
   openSettings: async () => {
     set({ settingsOpen: true });
     try {
-      const [modules, cfg] = await Promise.all([
+      const [modules, cfg, compose] = await Promise.all([
         rpc<ModulesAvailable>('modules.available'),
         rpc<{ config: ProjectConfigShape }>('project.config.get'),
+        rpc<{ files: string[] }>('docker.composeFiles').catch(() => ({ files: [] })),
       ]);
-      set({ modules, projectConfig: cfg.config });
+      set({ modules, projectConfig: cfg.config, composeFiles: compose.files });
     } catch (e) {
       get().log.push(`settings load failed: ${(e as Error).message}`);
     }

@@ -48,6 +48,26 @@ final class HostRunTest extends TestCase
         rmdir($dir);
     }
 
+    public function testComposeDiscoveryFindsEnvSuffixedFiles(): void
+    {
+        $dir = sys_get_temp_dir() . '/wp_compose_' . uniqid();
+        mkdir($dir);
+        file_put_contents($dir . '/compose.dev.yaml', "services: {}\n");
+        file_put_contents($dir . '/compose.prod.yaml', "services: {}\n");
+
+        $files = array_map('basename', \Waypoint\Runner\Docker\ComposeProject::candidates($dir));
+        $this->assertContains('compose.dev.yaml', $files);
+        $this->assertContains('compose.prod.yaml', $files);
+
+        // Auto-pick prefers a *dev* file; an explicit preference wins.
+        $this->assertSame('compose.dev.yaml', basename(\Waypoint\Runner\Docker\ComposeProject::find($dir)));
+        $this->assertSame('compose.prod.yaml', basename(\Waypoint\Runner\Docker\ComposeProject::find($dir, 'compose.prod.yaml')));
+
+        unlink($dir . '/compose.dev.yaml');
+        unlink($dir . '/compose.prod.yaml');
+        rmdir($dir);
+    }
+
     public function testHostFactoryFallsBackToBare(): void
     {
         $host = HostFactory::for('/definitely/not/a/laravel/app');

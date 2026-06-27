@@ -35,15 +35,60 @@ final class ComposeProject
     {
     }
 
-    public static function find(string $root): ?string
+    /**
+     * All compose files in the root — the standard names plus environment-suffixed
+     * ones (compose.dev.yaml, compose.prod.yaml, docker-compose.local.yml, …) that
+     * `docker compose` only picks up via `-f`. Standard names first.
+     *
+     * @return list<string> full paths
+     */
+    public static function candidates(string $root): array
     {
+        $root = rtrim($root, '/');
+        $out = [];
         foreach (self::COMPOSE_NAMES as $name) {
-            $candidate = rtrim($root, '/') . '/' . $name;
-            if (is_file($candidate)) {
-                return $candidate;
+            if (is_file("{$root}/{$name}")) {
+                $out[] = "{$root}/{$name}";
             }
         }
-        return null;
+        foreach (['compose.*.yaml', 'compose.*.yml', 'docker-compose.*.yaml', 'docker-compose.*.yml'] as $pattern) {
+            foreach (glob("{$root}/{$pattern}") ?: [] as $path) {
+                if (!in_array($path, $out, true)) {
+                    $out[] = $path;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Pick a compose file: an explicit preference (basename) if present, else a
+     * standard name, else a *dev* environment file, else the first candidate.
+     */
+    public static function find(string $root, ?string $prefer = null): ?string
+    {
+        $candidates = self::candidates($root);
+        if ($candidates === []) {
+            return null;
+        }
+        if ($prefer !== null && $prefer !== '') {
+            foreach ($candidates as $c) {
+                if (basename($c) === $prefer) {
+                    return $c;
+                }
+            }
+        }
+        foreach ($candidates as $c) {
+            if (in_array(basename($c), self::COMPOSE_NAMES, true)) {
+                return $c;
+            }
+        }
+        foreach ($candidates as $c) {
+            if (str_contains(strtolower(basename($c)), 'dev')) {
+                return $c;
+            }
+        }
+        return $candidates[0];
     }
 
     public static function load(string $path): self

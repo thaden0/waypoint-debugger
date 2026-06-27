@@ -17,10 +17,10 @@ final class ProjectConfig
         return rtrim($root, '/') . '/.waypoint/config.json';
     }
 
-    /** @return array{module:?string,providers:array{orm:?string,routes:?string}} */
+    /** @return array{module:?string,providers:array{orm:?string,routes:?string},docker:array{compose:?string}} */
     public static function read(string $root): array
     {
-        $default = ['module' => null, 'providers' => ['orm' => null, 'routes' => null]];
+        $default = ['module' => null, 'providers' => ['orm' => null, 'routes' => null], 'docker' => ['compose' => null]];
         $file = self::path($root);
         if (!is_file($file)) {
             return $default;
@@ -29,29 +29,30 @@ final class ProjectConfig
         if (!is_array($data)) {
             return $default;
         }
-        return [
-            'module' => $data['module'] ?? null,
-            'providers' => [
-                'orm' => $data['providers']['orm'] ?? null,
-                'routes' => $data['providers']['routes'] ?? null,
-            ],
-        ];
+        return self::normalize($data);
     }
 
-    /** @param array{module:?string,providers:array{orm:?string,routes:?string}} $config */
     public static function write(string $root, array $config): bool
     {
         $dir = rtrim($root, '/') . '/.waypoint';
         if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
             return false;
         }
-        $normalized = [
-            'module' => $config['module'] ?? null,
+        return @file_put_contents(self::path($root), json_encode(self::normalize($config), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) !== false;
+    }
+
+    /** @param array<string,mixed> $data */
+    private static function normalize(array $data): array
+    {
+        return [
+            'module' => $data['module'] ?? null,
             'providers' => [
-                'orm' => $config['providers']['orm'] ?? null,
-                'routes' => $config['providers']['routes'] ?? null,
+                'orm' => $data['providers']['orm'] ?? null,
+                'routes' => $data['providers']['routes'] ?? null,
+            ],
+            'docker' => [
+                'compose' => $data['docker']['compose'] ?? null,
             ],
         ];
-        return @file_put_contents(self::path($root), json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) !== false;
     }
 }

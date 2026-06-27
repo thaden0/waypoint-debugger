@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useStore, type ProjectConfigShape } from '../store/useStore';
 
+const STANDARD = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'];
+// Mirror the host's auto-pick: standard name → a *dev* file → the first candidate.
+function autoCompose(files: string[]): string {
+  return files.find((f) => STANDARD.includes(f)) ?? files.find((f) => f.toLowerCase().includes('dev')) ?? files[0] ?? '—';
+}
+
 // Project settings — module-aware. Edit which framework module a project uses
 // (or auto-detect) and override individual providers (e.g. the ORM), persisted to
 // .waypoint/config.json and shared with the repo.
@@ -13,7 +19,8 @@ export function SettingsPanel() {
   const saving = useStore((s) => s.savingSettings);
   const projectRoot = useStore((s) => s.runner?.projectRoot);
 
-  const [draft, setDraft] = useState<ProjectConfigShape>({ module: null, providers: { orm: null, routes: null } });
+  const composeFiles = useStore((s) => s.composeFiles);
+  const [draft, setDraft] = useState<ProjectConfigShape>({ module: null, providers: { orm: null, routes: null }, docker: { compose: null } });
 
   useEffect(() => {
     if (config) setDraft(config);
@@ -76,6 +83,20 @@ export function SettingsPanel() {
                 </div>
                 <span className="settings__hint">Swap a single provider independent of the framework (e.g. Eloquent → Doctrine when available).</span>
               </section>
+
+              {composeFiles.length > 0 && (
+                <section className="settings__sec">
+                  <div className="settings__sec-title">Docker</div>
+                  <div className="settings__field">
+                    <label className="settings__plabel">compose</label>
+                    <select value={draft.docker.compose ?? ''} onChange={(e) => setDraft({ ...draft, docker: { compose: e.target.value || null } })}>
+                      <option value="">Auto ({autoCompose(composeFiles)})</option>
+                      {composeFiles.map((f) => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <span className="settings__hint">Which compose file docker mode brings up (e.g. compose.dev.yaml vs compose.prod.yaml).</span>
+                </section>
+              )}
 
               <section className="settings__sec">
                 <div className="settings__sec-title">Available modules</div>
