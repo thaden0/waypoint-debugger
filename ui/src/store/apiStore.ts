@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { call } from '../rpc/client';
 import { wsClient } from '../rpc/ws';
 import { useStore } from './useStore';
+import { runPreScript, runTestScript } from './pmSandbox';
 import type { BreakpointHit, LedgerEntry } from '../types';
 
 // The project-aware API console — Postman fused with the replay debugger. Routes
@@ -164,11 +165,10 @@ interface ApiState {
   setEnvVars: (name: string, vars: KV[]) => void;
 }
 
-// Resolve {{var}} against the active environment.
-function resolver(envs: ApiEnv[], active: string | null): (s: string) => string {
-  const env = envs.find((e) => e.name === active);
+// Resolve {{var}} against a set of environment variables (post pre-request script).
+function resolverFromVars(vars: KV[]): (s: string) => string {
   const map = new Map<string, string>();
-  for (const v of env?.vars ?? []) if (v.on && v.key) map.set(v.key, v.value);
+  for (const v of vars) if (v.on && v.key) map.set(v.key, v.value);
   return (s: string) => s.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m, k) => (map.has(k) ? map.get(k)! : m));
 }
 
@@ -219,8 +219,20 @@ export const useApiStore = create<ApiState>((set, get) => ({
 
   send: async () => {
     const { draft, environments, activeEnv } = get();
-    const resolve = resolver(environments, activeEnv);
     set({ sending: true, response: null });
+
+    // Pre-request script: may mutate environment variables before resolution.
+    const activeEnvObj = environments.find((e) => e.name === activeEnv);
+    let envVars: KV[] = activeEnvObj?.vars ?? [];
+    const scriptLogs: string[] = [];
+    if (draft.preScript?.trim()) {
+      const pre = runPreScript(draft.preScript, envVars);
+      envVars = pre.vars;
+      scriptLogs.push(...pre.logs);
+      if (pre.error) scriptLogs.push('pre-request error: ' + pre.error);
+      if (activeEnvObj) get().setEnvVars(activeEnvObj.name, envVars);
+    }
+    const resolve = resolverFromVars(envVars);
 
     // Build headers (incl. auth) + body + content-type.
     const headers = onKV(draft.headers, resolve);
@@ -247,7 +259,7 @@ export const useApiStore = create<ApiState>((set, get) => ({
     if (draft.target === 'external') {
       // External needs an absolute URL; prepend env `base` for a bare path.
       if (!/^https?:\/\//i.test(url)) {
-        const base = (environments.find((e) => e.name === activeEnv)?.vars.find((v) => v.key === 'base' && v.on)?.value ?? '').replace(/\/$/, '');
+        const base = (envVars.find((v) => v.key === 'base' && v.on)?.value ?? '').replace(/\/$/, '');
         url = base + (url.startsWith('/') ? url : '/' + url);
       }
       params.target = 'external';
@@ -271,6 +283,19 @@ export const useApiStore = create<ApiState>((set, get) => ({
       // Push captured entries into the main ledger so they're replayable.
       if (res.captured && res.ledger) {
         useStore.setState({ ledger: res.ledger, breakpointHits: res.breakpoints ?? [] });
+      }
+      // Test script: assert against the response, collect pass/fail, persist any
+      // variable mutations (e.g. capturing an auth token into the environment).
+      if (draft.testScript?.trim() && response.ok) {
+        const t = runTestScript(draft.testScript, envVars, {
+          status: response.status ?? 0,
+          body: response.body ?? '',
+          headers: response.headers ?? {},
+          durationMs: response.durationMs ?? 0,
+        });
+        response.tests = t.error ? [...t.tests, { name: 'script error', passed: false, error: t.error }] : t.tests;
+        scriptLogs.push(...t.logs);
+        if (activeEnvObj) get().setEnvVars(activeEnvObj.name, t.vars);
       }
       set((s) => ({
         response,
@@ -344,3 +369,8 @@ async function persist(get: () => ApiState): Promise<void> {
 }
 
 export { METHODS };
+
+// Dev-only handle for console poking + end-to-end UI checks (no-op in production).
+if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+  (window as unknown as { __wpApiStore?: typeof useApiStore }).__wpApiStore = useApiStore;
+}

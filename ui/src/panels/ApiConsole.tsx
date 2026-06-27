@@ -149,7 +149,7 @@ function RequestBar() {
   );
 }
 
-const REQ_TABS = ['Params', 'Headers', 'Body', 'Auth'] as const;
+const REQ_TABS = ['Params', 'Headers', 'Body', 'Auth', 'Pre-request', 'Tests'] as const;
 type ReqTab = (typeof REQ_TABS)[number];
 
 function RequestTabs() {
@@ -161,6 +161,8 @@ function RequestTabs() {
     Headers: draft.headers.filter((h) => h.on && h.key).length,
     Body: draft.bodyMode === 'none' ? 0 : 1,
     Auth: draft.auth.type === 'none' ? 0 : 1,
+    'Pre-request': draft.preScript?.trim() ? 1 : 0,
+    Tests: draft.testScript?.trim() ? 1 : 0,
   };
 
   return (
@@ -177,7 +179,26 @@ function RequestTabs() {
         {tab === 'Headers' && <HeadersTab />}
         {tab === 'Body' && <BodyTab />}
         {tab === 'Auth' && <AuthTab />}
+        {tab === 'Pre-request' && <ScriptTab field="preScript" hint="Runs before the request. e.g. pm.environment.set('ts', Date.now())" />}
+        {tab === 'Tests' && <ScriptTab field="testScript" hint="Runs after the response. e.g. pm.test('ok', () => pm.response.to.have.status(200))" />}
       </div>
+    </div>
+  );
+}
+
+function ScriptTab({ field, hint }: { field: 'preScript' | 'testScript'; hint: string }) {
+  const value = useApiStore((s) => s.draft[field] ?? '');
+  const patch = useApiStore((s) => s.patchDraft);
+  return (
+    <div className="api-script">
+      <div className="api-script__hint">{hint}</div>
+      <textarea
+        className="api-script__code"
+        value={value}
+        spellCheck={false}
+        placeholder="// pm.* script"
+        onChange={(e) => patch({ [field]: e.target.value })}
+      />
     </div>
   );
 }
@@ -281,7 +302,7 @@ function KVEditor({ rows, onChange, keyPlaceholder, valuePlaceholder }: { rows: 
   );
 }
 
-const RES_TABS = ['Body', 'Headers'] as const;
+const RES_TABS = ['Body', 'Headers', 'Tests'] as const;
 type ResTab = (typeof RES_TABS)[number];
 
 function ResponseView() {
@@ -300,6 +321,8 @@ function ResponseView() {
   if (pretty && isJson) {
     try { shown = JSON.stringify(JSON.parse(body), null, 2); } catch { /* leave raw */ }
   }
+  const tests = response.tests ?? [];
+  const passed = tests.filter((t) => t.passed).length;
 
   return (
     <div className="api-res">
@@ -312,18 +335,35 @@ function ResponseView() {
         ) : (
           <span className="api-res__cap off">external · not captured</span>
         )}
+        {tests.length > 0 && (
+          <span className={'api-res__tests-badge' + (passed === tests.length ? ' ok' : ' fail')}>{passed}/{tests.length} tests</span>
+        )}
         <div className="api-res__tabs">
-          {RES_TABS.map((t) => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}
+          {RES_TABS.map((t) => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}{t === 'Tests' && tests.length ? ` (${tests.length})` : ''}</button>)}
           {tab === 'Body' && isJson && <button className={'api-res__pretty' + (pretty ? ' on' : '')} onClick={() => setPretty((p) => !p)}>pretty</button>}
         </div>
       </div>
-      {tab === 'Body' ? (
-        <pre className="api-res__body">{shown || <span className="muted">(empty body)</span>}</pre>
-      ) : (
+      {tab === 'Body' && <pre className="api-res__body">{shown || <span className="muted">(empty body)</span>}</pre>}
+      {tab === 'Headers' && (
         <div className="api-res__headers">
           {Object.entries(response.headers ?? {}).map(([k, v]) => (
             <div className="api-res__hrow" key={k}><span className="api-res__hk">{k}</span><span className="api-res__hv">{v}</span></div>
           ))}
+        </div>
+      )}
+      {tab === 'Tests' && (
+        <div className="api-res__testlist">
+          {tests.length === 0 ? (
+            <div className="muted" style={{ padding: 12 }}>No tests. Add assertions in the request's Tests tab.</div>
+          ) : (
+            tests.map((t, i) => (
+              <div className={'api-test' + (t.passed ? ' pass' : ' fail')} key={i}>
+                <span className="api-test__mark">{t.passed ? '✓' : '✕'}</span>
+                <span className="api-test__name">{t.name}</span>
+                {!t.passed && t.error && <span className="api-test__err">{t.error}</span>}
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

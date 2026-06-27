@@ -472,12 +472,16 @@ auto-build the collection**, kept in sync as routes change.
   so whatever waypoints/breakpoints are placed fire and the ledger fills; the console
   is itself a debugging surface, and a captured request flows straight into the replay
   what-if loop.
-- **Full Postman parity (staged).** Stage 1 (spine): auto route-list collection +
-  request builder (method/URL/query/headers/body json·form·raw/auth none·bearer·basic·
-  apikey) + environments with `{{var}}` substitution + dual-target send + response view
-  (status/time/size/body/headers) + history + saved requests. Stage 2: a `pm.*`-style
-  sandbox for **pre-request scripts + test assertions** with a results panel. (Deep
-  Postman corners — OAuth2 flows, cookie jar, code-gen — are acknowledged as later.)
+- **Full Postman parity (staged) — both stages built.** Stage 1 (spine): auto
+  route-list collection + request builder (method/URL/query/headers/body json·form·raw/
+  auth none·bearer·basic·apikey) + environments with `{{var}}` substitution + dual-target
+  send + response view (status/time/size/body/headers) + history + saved requests.
+  Stage 2: a `pm.*`-style scripting runtime (`store/pmSandbox.ts`) for **pre-request
+  scripts + test assertions** — `pm.environment`/`pm.variables` (mutations persist to
+  the env), `pm.test`, a chai-lite `pm.expect`, and `pm.response` — with a pass/fail
+  results panel. Not a security sandbox (scripts are the user's own, run in-browser via
+  `new Function`, like Postman). Deep Postman corners — OAuth2 flows, cookie jar,
+  code-gen — are acknowledged as later.
 - **Persistence pulls in §14.2.** Saved requests + environments live in the project
   app-file (`.waypoint/api.json`) so they're shareable — the first concrete consumer of
   the `.waypoint/` store.

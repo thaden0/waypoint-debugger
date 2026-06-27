@@ -632,3 +632,21 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .api-res__hrow { display: flex; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
 .api-res__hk { flex: 0 0 200px; color: var(--brass); font-family: ui-monospace, monospace; }
 .api-res__hv { color: var(--text); font-family: ui-monospace, monospace; word-break: break-all; }
+
+/* API console — stage 2: scripting + test results */
+.api-script { display: flex; flex-direction: column; gap: 6px; }
+.api-script__hint { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+.api-script__code { width: 100%; min-height: 110px; resize: vertical; background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 8px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; }
+.api-script__code:focus { outline: none; border-color: var(--accent); }
+.api-res__tests-badge { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+.api-res__tests-badge.ok { color: var(--ok); background: rgb(var(--ok-rgb) / 0.14); }
+.api-res__tests-badge.fail { color: var(--bp); background: rgb(var(--bp-rgb) / 0.16); }
+.api-res__testlist { flex: 1; overflow: auto; padding: 6px 10px; }
+.api-test { display: flex; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: 5px; font-size: 12px; margin-bottom: 3px; }
+.api-test.pass { background: rgb(var(--ok-rgb) / 0.07); }
+.api-test.fail { background: rgb(var(--bp-rgb) / 0.08); }
+.api-test__mark { font-weight: 800; }
+.api-test.pass .api-test__mark { color: var(--ok); }
+.api-test.fail .api-test__mark { color: var(--bp); }
+.api-test__name { color: var(--text); }
+.api-test__err { color: var(--bp); font-family: ui-monospace, monospace; font-size: 11px; margin-left: auto; }
