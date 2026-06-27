@@ -911,3 +911,9 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .settings__mock-del { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
 .settings__mock-del:hover { color: var(--bp); }
 .settings__mock-add { align-self: flex-start; background: var(--bg-3); border: 1px solid var(--line); color: var(--accent-bright); border-radius: 5px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
+
+/* FE framework-state tab */
+.festate { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.festate__bar { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.festate__empty { padding: 14px; }
+.festate__tree { flex: 1; overflow: auto; margin: 0; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); white-space: pre; }

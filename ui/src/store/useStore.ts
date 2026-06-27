@@ -108,6 +108,9 @@ interface State {
   networkAll: boolean;
   traces: Record<string, TraceResult>;
   tracing: string | null;
+  feState: unknown;
+  feLedger: { seq: number; action?: string }[];
+  feStateError: string | null;
   browserSrc: string | null;
   log: string[];
 
@@ -160,6 +163,7 @@ interface State {
   detachBrowser: () => Promise<void>;
   pollNetwork: () => Promise<void>;
   traceRequest: (rec: NetworkRecord) => Promise<void>;
+  snapshotFeState: () => Promise<void>;
 }
 
 export interface NetworkRecord {
@@ -302,6 +306,9 @@ export const useStore = create<State>((set, get) => ({
   networkAll: false,
   traces: {},
   tracing: null,
+  feState: null,
+  feLedger: [],
+  feStateError: null,
   browserSrc: null,
   log: [],
 
@@ -808,6 +815,17 @@ export const useStore = create<State>((set, get) => ({
       const res = await rpcFrontend<{ requests: NetworkRecord[] }>('cdp.network', { all: get().networkAll });
       set({ network: res.requests });
     } catch { /* transient */ }
+  },
+
+  // Frontend framework-state (CDP): snapshot the live store + its action ledger.
+  snapshotFeState: async () => {
+    try {
+      const snap = await rpcFrontend<{ state: unknown }>('cdp.snapshot');
+      const led = await rpcFrontend<{ snapshots: { seq: number; action?: string }[] }>('cdp.ledger').catch(() => ({ snapshots: [] }));
+      set({ feState: snap.state, feLedger: led.snapshots ?? [], feStateError: snap.state == null ? 'No framework store detected on the page (Redux agent found nothing).' : null });
+    } catch (e) {
+      set({ feStateError: (e as Error).message });
+    }
   },
 
   // World-B correlation: take a captured FE request and re-run it through the

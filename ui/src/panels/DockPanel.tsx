@@ -5,7 +5,7 @@ import { VariablesPanel, ConsolePanel } from './RunPanels';
 // The bottom dock — tabbed per concern/runner: backend Variables (the captured
 // ledger) + Console, and the frontend Network panel (CDP) when a frontend runner
 // is connected. This is the "tabbed per runner" surface.
-type Tab = 'variables' | 'console' | 'network';
+type Tab = 'variables' | 'console' | 'network' | 'state';
 
 export function DockPanel() {
   const hasFrontend = useStore((s) => s.runners.some((r) => r.capabilities.includes('cdp')));
@@ -19,16 +19,47 @@ export function DockPanel() {
         </button>
         <button className={tab === 'console' ? 'on' : ''} onClick={() => setTab('console')}>Console</button>
         {hasFrontend && (
-          <button className={tab === 'network' ? 'on' : ''} onClick={() => setTab('network')}>
-            Network <span className="dock__badge fe">FE</span>
-          </button>
+          <>
+            <button className={tab === 'network' ? 'on' : ''} onClick={() => setTab('network')}>
+              Network <span className="dock__badge fe">FE</span>
+            </button>
+            <button className={tab === 'state' ? 'on' : ''} onClick={() => setTab('state')}>
+              State <span className="dock__badge fe">FE</span>
+            </button>
+          </>
         )}
       </div>
       <div className="dock__body">
         {tab === 'variables' && <VariablesPanel />}
         {tab === 'console' && <ConsolePanel />}
         {tab === 'network' && <NetworkPanel />}
+        {tab === 'state' && <StatePanel />}
       </div>
+    </div>
+  );
+}
+
+function StatePanel() {
+  const attached = useStore((s) => s.cdpAttached);
+  const snapshot = useStore((s) => s.snapshotFeState);
+  const feState = useStore((s) => s.feState);
+  const feLedger = useStore((s) => s.feLedger);
+  const error = useStore((s) => s.feStateError);
+
+  if (!attached) return <div className="muted net__empty">Attach to the browser in the Network tab first.</div>;
+  return (
+    <div className="festate">
+      <div className="festate__bar">
+        <button className="net__btn primary" onClick={() => snapshot()}>Snapshot store</button>
+        {feLedger.length > 0 && <span className="muted">{feLedger.length} action{feLedger.length > 1 ? 's' : ''} recorded</span>}
+      </div>
+      {error ? (
+        <div className="muted festate__empty">{error}</div>
+      ) : feState != null ? (
+        <pre className="festate__tree">{JSON.stringify(feState, null, 2)}</pre>
+      ) : (
+        <div className="muted festate__empty">Snapshot the page's framework store (Redux) to inspect its state.</div>
+      )}
     </div>
   );
 }
