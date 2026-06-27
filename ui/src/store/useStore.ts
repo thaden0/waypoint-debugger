@@ -90,6 +90,10 @@ interface State {
   debugResult: { ok: boolean; result?: unknown; stopped?: boolean } | null;
   currentLine: number | null;
   experiment: Experiment | null;
+  settingsOpen: boolean;
+  modules: ModulesAvailable | null;
+  projectConfig: ProjectConfigShape | null;
+  savingSettings: boolean;
   browserSrc: string | null;
   log: string[];
 
@@ -126,6 +130,22 @@ interface State {
   setExpMode: (mode: 'peek' | 'destructive') => void;
   runExperiment: () => Promise<void>;
   renderEntry: (method: string, uri: string) => Promise<void>;
+  openSettings: () => Promise<void>;
+  closeSettings: () => void;
+  saveSettings: (config: ProjectConfigShape) => Promise<void>;
+  refreshRunner: () => Promise<void>;
+}
+
+export interface ModulesAvailable {
+  modules: { id: string; detect: string[]; role: string; capabilities: string[] }[];
+  languages: { id: string; role: string; extensions: string[]; monaco: string | null }[];
+  providers: Record<string, { id: string; framework: string }[]>;
+  detected: string | null;
+  active: string | null;
+}
+export interface ProjectConfigShape {
+  module: string | null;
+  providers: { orm: string | null; routes: string | null };
 }
 
 // Transport router: prefer the WS host (full run capability), fall back to HTTP
@@ -192,6 +212,10 @@ export const useStore = create<State>((set, get) => ({
   debugResult: null,
   currentLine: null,
   experiment: null,
+  settingsOpen: false,
+  modules: null,
+  projectConfig: null,
+  savingSettings: false,
   browserSrc: null,
   log: [],
 
@@ -590,6 +614,41 @@ export const useStore = create<State>((set, get) => ({
     if (!get().hasHost) return;
     const res = await rpc<{ body: string }>('host.entry', { method, uri });
     set({ browserSrc: res.body });
+  },
+
+  openSettings: async () => {
+    set({ settingsOpen: true });
+    try {
+      const [modules, cfg] = await Promise.all([
+        rpc<ModulesAvailable>('modules.available'),
+        rpc<{ config: ProjectConfigShape }>('project.config.get'),
+      ]);
+      set({ modules, projectConfig: cfg.config });
+    } catch (e) {
+      get().log.push(`settings load failed: ${(e as Error).message}`);
+    }
+  },
+
+  closeSettings: () => set({ settingsOpen: false }),
+
+  saveSettings: async (config) => {
+    set({ savingSettings: true });
+    try {
+      const res = await rpc<{ ok: boolean; active: string | null; config: ProjectConfigShape }>('project.config.save', { config });
+      set((s) => ({ projectConfig: res.config, modules: s.modules ? { ...s.modules, active: res.active } : s.modules }));
+      await get().refreshRunner(); // capabilities may have changed (e.g. orm)
+    } finally {
+      set({ savingSettings: false });
+    }
+  },
+
+  refreshRunner: async () => {
+    try {
+      const info = await rpc<RunnerInfo>('runner.info');
+      set({ runner: info, hasHost: (info.capabilities ?? []).includes('host') });
+    } catch {
+      // leave existing runner info in place
+    }
   },
 }));
 

@@ -7,6 +7,7 @@ import { SwapPanel } from './panels/SwapPanel';
 import { RunControls } from './panels/RunPanel';
 import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
+import { SettingsPanel } from './panels/SettingsPanel';
 import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
@@ -66,6 +67,7 @@ export default function App() {
   const setView = useStore((s) => s.setView);
   const setMode = useStore((s) => s.setMode);
   const openPath = useStore((s) => s.openPath);
+  const openSettings = useStore((s) => s.openSettings);
 
   const [placing, setPlacing] = useState<MarkerKind>('breakpoint');
 
@@ -146,7 +148,11 @@ export default function App() {
               : `php ${runner?.phpVersion ?? ''} · static`
             : 'runner offline'}
         </div>
+
+        <button className="settings-gear" title="Project settings" disabled={!connected} onClick={() => openSettings()}>⚙</button>
       </header>
+
+      <SettingsPanel />
 
       {view === 'api' ? (
         <div className="workbench workbench--api">

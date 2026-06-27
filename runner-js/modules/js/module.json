@@ -1,0 +1,8 @@
+{
+  "id": "js",
+  "kind": "language",
+  "role": "both",
+  "runner": { "cmd": ["npm", "--prefix", "runner-js", "run", "host"], "wsPortEnv": "WP_WS_PORT" },
+  "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs"],
+  "monaco": "typescript"
+}

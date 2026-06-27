@@ -9,7 +9,9 @@ use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostInterface;
 use Waypoint\Runner\Module\FrameworkModule;
 use Waypoint\Runner\Module\ModuleFactory;
+use Waypoint\Runner\Module\ModuleRegistry;
 use Waypoint\Runner\Module\OrmProvider;
+use Waypoint\Runner\Module\ProjectConfig;
 use Waypoint\Runner\Reconstruct\Invoker;
 use Waypoint\Runner\Run\RequestRunner;
 use Waypoint\Runner\Run\SliceRunner;
@@ -34,6 +36,7 @@ final class MethodRegistry
     private ?FrameworkModule $module;
     private ?HostInterface $host;
     private bool $manageHost;
+    private ModuleRegistry $registry;
     private ?\Waypoint\Runner\Debug\DebugManager $debug;
 
     public function __construct(string $projectRoot, ?FrameworkModule $module = null, ?\Waypoint\Runner\Debug\DebugManager $debug = null)
@@ -42,6 +45,7 @@ final class MethodRegistry
         $this->module = $module;
         $this->host = $module?->host();
         $this->debug = $debug;
+        $this->registry = ModuleRegistry::default();
         $this->manageHost = $module !== null; // resident host process re-points its module
         $this->structure = new StructureExtractor();
         $this->scanner = new ProblemScanner();
@@ -175,6 +179,28 @@ final class MethodRegistry
             'api.collection.save' => function (array $p) {
                 $this->saveCollection($p['collection'] ?? []);
                 return ['ok' => true];
+            },
+
+            // Project settings & module awareness — powers the settings page.
+            'modules.available' => fn () => [
+                'modules' => $this->registry->availableModules(),
+                'languages' => $this->registry->availableLanguages(),
+                'providers' => $this->registry->availableProviders(),
+                'detected' => $this->registry->detect($this->projectRoot),
+                'active' => $this->module?->id(),
+            ],
+            'project.config.get' => fn () => ['config' => ProjectConfig::read($this->projectRoot)],
+            'project.config.save' => function (array $p) {
+                $config = $p['config'] ?? [];
+                if (!ProjectConfig::write($this->projectRoot, $config)) {
+                    throw new RpcException(-32053, 'cannot write .waypoint/config.json');
+                }
+                // Re-resolve so the new module/providers take effect immediately.
+                if ($this->manageHost) {
+                    $this->module = ModuleFactory::for($this->projectRoot, getenv('WP_HOST_DRIVER') ?: null);
+                    $this->host = $this->module->host();
+                }
+                return ['ok' => true, 'active' => $this->module?->id(), 'config' => ProjectConfig::read($this->projectRoot)];
             },
         ];
 

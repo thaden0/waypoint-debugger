@@ -36,7 +36,7 @@ final class LaravelModule implements FrameworkModule
 
     public function routes(): RouteProvider
     {
-        return new LaravelRouteProvider($this->host());
+        return new LaravelRouteProvider($this->root, $this->host());
     }
 
     public function orm(): ?OrmProvider

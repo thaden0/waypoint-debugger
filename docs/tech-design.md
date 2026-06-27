@@ -675,6 +675,31 @@ runtimes can't share one). Two layers:
 `module->routes()`, `models.*` → `module->orm()`; `project.open` re-resolves the module.
 The §14.3 registry (installable modules) is the distribution layer on top.
 
+### 17.2 Project settings + per-project provider override (built)
+
+- **`.waypoint/config.json`** (`ProjectConfig`) holds the project's module choice and
+  per-provider overrides: `{ module: null|id, providers: { orm: null|id, routes: null|id } }`.
+  Committed with the repo, so a team shares it.
+- **Resolution precedence:** explicit force (`WP_HOST_DRIVER`) → project config → `detect`.
+  `ModuleRegistry::resolve()` reads the config and wraps the base module in a
+  **`ConfiguredModule`** that swaps in an overridden provider by id (providers share the
+  `(root, host)` ctor, so any can be instantiated uniformly). This is the seam for
+  Eloquent ↔ Doctrine without touching the framework module.
+- **Settings RPC:** `modules.available` (framework + language manifests, providers,
+  detected/active), `project.config.get`, `project.config.save` (writes + re-resolves
+  live, so capabilities update — a `bare` override drops `orm`).
+- **UI:** a topbar ⚙ opens a **module-aware settings modal** — project/detected/active,
+  framework-module select (auto / laravel / bare), ORM/routes provider overrides, and a
+  list of all discovered modules with role + capabilities.
+
+### 17.3 Module-aware launcher (built)
+
+`waypoint.mjs` reads the same `module.json` manifests: `node waypoint.mjs modules` lists
+discovered language + framework modules; `up --language <id>` picks a **backend language
+module** and launches its runner from the manifest's `runner.cmd` (default `php`; `js`
+runs `runner-js`'s WS host), rather than a hardcoded command. `role: backend|frontend|both`
+is carried on language manifests for the eventual split-screen wiring.
+
 ---
 
 *Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*

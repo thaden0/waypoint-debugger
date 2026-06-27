@@ -4,6 +4,10 @@
   "extends": "php",
   "role": "backend",
   "detect": ["bootstrap/app.php", "artisan"],
-  "provides": { "module": "Waypoint\\Modules\\Laravel\\LaravelModule" },
+  "provides": {
+    "module": "Waypoint\\Modules\\Laravel\\LaravelModule",
+    "orm": [{ "id": "eloquent", "class": "Waypoint\\Modules\\Laravel\\EloquentOrmProvider", "default": true }],
+    "routes": [{ "id": "laravel", "class": "Waypoint\\Modules\\Laravel\\LaravelRouteProvider", "default": true }]
+  },
   "capabilities": ["host", "run", "invoke", "api", "orm"]
 }

@@ -14,7 +14,9 @@ use Waypoint\Runner\Module\RouteProvider;
  */
 final class LaravelRouteProvider implements RouteProvider
 {
-    public function __construct(private HostInterface $host)
+    // Provider convention: (root, host). The root is unused here but keeps the
+    // signature uniform so the registry can instantiate any provider the same way.
+    public function __construct(private string $root, private HostInterface $host)
     {
     }
 

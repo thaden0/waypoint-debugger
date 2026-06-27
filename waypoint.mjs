@@ -11,7 +11,7 @@
 // Flags: --project <path>  --ws-port N  --http-port N  --ui-port N  --build  --no-open  --force
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +70,36 @@ function phpVersion() {
   return m ? { raw: v, parts: [Number(m[1]), Number(m[2]), Number(m[3])] } : { raw: v, parts: [0, 0, 0] };
 }
 const gte = (a, b) => a[0] !== b[0] ? a[0] > b[0] : a[1] >= b[1];
+
+// ---- modules ------------------------------------------------------------------
+// Discover module.json manifests across the runners (the same files the PHP
+// ModuleRegistry reads). The launcher is module-aware: it picks the backend
+// runner from a language manifest's `runner.cmd` rather than hardcoding it.
+function discoverModules() {
+  const dirs = [path.join(ROOT, 'runner', 'modules'), path.join(ROOT, 'runner-js', 'modules')];
+  const mods = [];
+  for (const d of dirs) {
+    if (!existsSync(d)) continue;
+    for (const name of readdirSync(d)) {
+      const mf = path.join(d, name, 'module.json');
+      if (!existsSync(mf)) continue;
+      try { mods.push(JSON.parse(readFileSync(mf, 'utf8'))); } catch { /* skip bad manifest */ }
+    }
+  }
+  return mods;
+}
+const languageModules = () => discoverModules().filter((m) => m.kind === 'language');
+const frameworkModules = () => discoverModules().filter((m) => m.kind === 'framework');
+
+function listModules() {
+  const langs = languageModules();
+  const fws = frameworkModules();
+  console.log(bold('\nLanguages'));
+  for (const l of langs) console.log(`  ${cyan(l.id.padEnd(8))} ${dim(l.role.padEnd(9))} ${dim((l.extensions || []).join(' '))}`);
+  console.log(bold('\nFrameworks'));
+  for (const f of fws) console.log(`  ${magenta(f.id.padEnd(8))} ${dim(f.role.padEnd(9))} ${dim('detect: ' + ((f.detect || []).join(', ') || '(fallback)'))}`);
+  console.log('');
+}
 
 // ---- doctor -------------------------------------------------------------------
 function doctor() {
@@ -176,21 +206,31 @@ async function up(flags, positional) {
   const httpPort = String(flags['http-port'] || 9777);
   const uiPort = String(flags['ui-port'] || 5180);
 
+  // Module-aware backend: pick a language module by id (default php) and launch
+  // its runner from the manifest, rather than hardcoding the command.
+  const langs = languageModules();
+  const wantLang = flags.language || 'php';
+  const backend = langs.find((l) => l.id === wantLang) || langs.find((l) => l.id === 'php');
+  if (!backend || !backend.runner?.cmd?.length) { err(`no runnable language module '${wantLang}' (have: ${langs.map((l) => l.id).join(', ') || 'none'})`); return false; }
+
   if (!doctor()) return false;
   if (!install()) return false;
   if (!existsSync(project)) { err(`project path does not exist: ${project}`); return false; }
 
   console.log(bold('\nStarting Waypoint'));
   info(`project   ${project}`);
+  info(`backend   ${backend.id} (${backend.role}) → ${backend.runner.cmd.join(' ')}`);
   info(`host      ws://127.0.0.1:${wsPort}`);
   info(`ui        http://localhost:${uiPort}\n`);
 
-  const env = { ...process.env, PROJECT_ROOT: project, WP_WS_PORT: wsPort };
+  const env = { ...process.env, PROJECT_ROOT: project, [backend.runner.wsPortEnv || 'WP_WS_PORT']: wsPort };
 
-  // Resident host (boots the app once; full run + invoke over WebSocket).
-  spawnTagged('host', magenta, 'php', [path.join('runner', 'bin', 'host.php')], { env });
-  // HTTP fallback (static analysis when the WS host isn't up — the UI proxies /rpc here).
-  spawnTagged('rpc', cyan, 'php', ['-S', `127.0.0.1:${httpPort}`, path.join('runner', 'bin', 'server.php')], { env });
+  // Resident backend host (boots once; full run + invoke over WebSocket).
+  spawnTagged('host', magenta, backend.runner.cmd[0], backend.runner.cmd.slice(1), { env });
+  // HTTP fallback for the PHP backend (static analysis when the WS host isn't up).
+  if (backend.id === 'php') {
+    spawnTagged('rpc', cyan, 'php', ['-S', `127.0.0.1:${httpPort}`, path.join('runner', 'bin', 'server.php')], { env });
+  }
 
   let uiUrl = `http://localhost:${uiPort}`;
   if (flags.build) {
@@ -219,12 +259,14 @@ function help() {
   console.log(`
 ${bold('Waypoint')} — visual checkpoint-replay debugger
 
-  ${cyan('node waypoint.mjs up')} ${dim('[--project PATH]')}   install (if needed) + start host + UI
+  ${cyan('node waypoint.mjs up')} ${dim('[--project PATH]')}   install (if needed) + start backend + UI
   ${cyan('node waypoint.mjs doctor')}                    check prerequisites
   ${cyan('node waypoint.mjs install')}                   install runner + UI dependencies
+  ${cyan('node waypoint.mjs modules')}                    list discovered language + framework modules
 
 ${bold('Flags')}
-  --project PATH    Laravel/PHP project to debug   ${dim('(default: bundled fixtures)')}
+  --project PATH    project to debug   ${dim('(default: bundled fixtures)')}
+  --language ID     backend language module   ${dim('(default: php; see `modules`)')}
   --build           serve a production UI build instead of the dev server
   --no-open         don't open the browser
   --force           reinstall dependencies even if present
@@ -240,6 +282,7 @@ const FORCE = !!flags.force;
   switch (cmd) {
     case 'doctor': process.exit(doctor() ? 0 : 1); break;
     case 'install': process.exit(install() ? 0 : 1); break;
+    case 'modules': listModules(); break;
     case 'up': { const okUp = await up(flags, positional); if (!okUp) process.exit(1); break; }
     case 'help': case '--help': case '-h': help(); break;
     default: err(`unknown command: ${cmd}`); help(); process.exit(1);
