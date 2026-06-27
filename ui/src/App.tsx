@@ -4,6 +4,7 @@ import { Canvas } from './canvas/Canvas';
 import { CodeEditor } from './editor/CodeEditor';
 import { Explorer } from './panels/Explorer';
 import { SwapPanel } from './panels/SwapPanel';
+import { RunControls } from './panels/RunPanel';
 import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
@@ -13,6 +14,8 @@ export default function App() {
   const loadTree = useStore((s) => s.loadTree);
   const connected = useStore((s) => s.connected);
   const runner = useStore((s) => s.runner);
+  const transport = useStore((s) => s.transport);
+  const hasHost = useStore((s) => s.hasHost);
   const mode = useStore((s) => s.mode);
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
@@ -69,8 +72,12 @@ export default function App() {
           )}
         </div>
 
-        <div className={'conn ' + (connected ? 'is-up' : 'is-down')}>
-          {connected ? `php ${runner?.phpVersion ?? ''}` : 'runner offline'}
+        <div className={'conn ' + (connected ? 'is-up' : 'is-down')} title={`transport: ${transport}`}>
+          {connected
+            ? hasHost
+              ? `host: ${runner?.host?.driver ?? 'php'} (${transport})`
+              : `php ${runner?.phpVersion ?? ''} · static`
+            : 'runner offline'}
         </div>
       </header>
 
@@ -104,8 +111,10 @@ export default function App() {
           )}
         </main>
 
-        {/* Right rail: swap + waypoint workbench. */}
+        {/* Right rail: run controls + swap/waypoint workbench. */}
         <aside className="rail rail--right">
+          <div className="rail__section-title">Run slice</div>
+          <RunControls />
           <div className="rail__section-title">Slice &amp; swaps</div>
           <SwapPanel />
         </aside>

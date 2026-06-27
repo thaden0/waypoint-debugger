@@ -6,11 +6,14 @@ drop waypoints on public method calls during a real run, then re-enter any of th
 with the captured state rebuilt — safely, with flagged I/O swapped out and the
 whole run wrapped in a transaction that rolls back by default.
 
-> Status: **early build.** The PHP analysis core (parse / scan / swap / waypoint
-> instrument / capture / reconstruct-invoke) and the UI shell (class-diagram
-> canvas, Monaco editor with gutter waypoints, swap workbench) are working. The
-> FrankenPHP host that boots a real Laravel app and the WebSocket live-run
-> transport are the next milestones. See [docs/tech-design.md](docs/tech-design.md).
+> Status: **working vertical slice.** The PHP analysis core (parse / scan / swap /
+> waypoint instrument / capture / reconstruct-invoke), the **resident host**
+> (boots the app, runs slices, replays captured waypoints), the **WebSocket**
+> control plane (live capture streaming), and the UI (class-diagram canvas, Monaco
+> gutter waypoints, swap workbench, run controls, ledger timeline) are all wired
+> end-to-end. A real Laravel app boots via `LaravelHost`; anything else falls back
+> to `BareHost`. Next: include-time instrumentation for whole-app runs and the
+> JS/TS adapter. See [docs/tech-design.md](docs/tech-design.md).
 
 ---
 
@@ -34,17 +37,28 @@ Two capabilities, built in order:
 ## Architecture
 
 ```
-UI (React + TS + Vite)            Runner (PHP, FrankenPHP host)
+UI (React + TS + Vite)            Runner (PHP — resident host)
  ├─ Class-diagram canvas           ├─ StructureExtractor  (AST → node model)
  │   @xyflow/react + elkjs         ├─ ProblemScanner      (swap candidates)
  ├─ Monaco editor                  ├─ Swapper             (AST RHS rewrite)
  │   gutter waypoints/breakpoints  ├─ WaypointInstrumenter(capture hooks)
- ├─ Swap workbench                 ├─ Recorder            (ledger + tier-3 gate)
- └─ Zustand store                  └─ Invoker             (reconstruct + invoke)
+ ├─ Swap workbench                 ├─ SliceRunner         (instrument→load→drive)
+ ├─ Run controls + ledger timeline ├─ Recorder            (ledger + tier-3 gate)
+ ├─ Live browser pane (iframe)     ├─ Invoker             (reconstruct + invoke)
+ └─ Zustand store                  └─ Host (Laravel | Bare) + tx guard
         │                                   │
-        └──────── JSON-RPC 2.0 ─────────────┘
-            (HTTP now; WebSocket for live runs)
+        ├──────── JSON-RPC 2.0 over WebSocket (live: run, invoke, streamed
+        │             captures) ── bin/host.php  ws://127.0.0.1:9778
+        └──────── JSON-RPC 2.0 over HTTP (static analysis fallback)
+                      bin/server.php  http://127.0.0.1:9777
 ```
+
+The resident host (`bin/host.php`) boots the target app once and serves the
+control plane over a pure-PHP WebSocket — `run.slice` instruments and drives a
+slice, capture hooks stream `ledger.captured` events to the UI, and `run.invoke`
+replays any captured public-method waypoint with reconstructed state inside a
+rollback-guarded transaction. `bin/worker.php` is the FrankenPHP worker-mode
+variant of the same logic.
 
 The runner is the concrete **PHP adapter** of a language-neutral contract
 (`parse / instrument / swap / capture / reconstruct / transport`). A future JS/TS
@@ -61,26 +75,28 @@ Requirements: PHP 8.2+, Composer, Node 20+.
 # 1. Runner core
 cd runner
 composer install
-php bin/smoke.php          # 19/19 green — exercises the whole core pipeline
+php bin/smoke.php          # 19/19 green — exercises the static core pipeline
+composer test             # 13 PHPUnit tests incl. live slice run + replay + WS
 
-# 2. Start the runner against a project (here, the bundled fixture)
-PROJECT_ROOT="$PWD/tests/fixtures" php -S 127.0.0.1:9777 bin/server.php
+# 2. Start the resident host (WebSocket, full run capability)
+PROJECT_ROOT="$PWD/tests/fixtures" php bin/host.php    # ws://127.0.0.1:9778
 
 # 3. UI (separate terminal)
 cd ui
 npm install
-npm run dev               # http://localhost:5180 — proxies /rpc to the runner
+npm run dev               # http://localhost:5180
+```
+
+Or start everything at once:
+
+```bash
+./dev.sh /path/to/laravel    # host + HTTP fallback + UI
 ```
 
 Point `PROJECT_ROOT` at any Laravel app to explore it. The UI loads the class
-diagram, opens files in the editor, auto-highlights swap candidates, and lets you
-place waypoints on public-method lines.
-
-There's also a convenience launcher:
-
-```bash
-./dev.sh /path/to/laravel    # starts runner + UI together
-```
+diagram, opens files in the editor, auto-highlights swap candidates, lets you
+place waypoints on public-method lines, run a slice with authored args, watch the
+ledger fill live, and replay any captured waypoint.
 
 ---
 
@@ -88,13 +104,17 @@ There's also a convenience launcher:
 
 | Path | What |
 |---|---|
-| `runner/` | PHP runner core + JSON-RPC server (nikic/php-parser) |
+| `runner/` | PHP runner core + JSON-RPC servers (nikic/php-parser) |
 | `runner/src/Structure` | AST → language-neutral structure model |
 | `runner/src/Swap` | problem scanner + AST swapper |
 | `runner/src/Waypoint` | capture-hook instrumenter |
 | `runner/src/Capture` | the ledger primitive + reproducibility gate |
 | `runner/src/Reconstruct` | reconstruct + invoke with rollback guard |
-| `ui/` | React + TS UI (canvas, editor, panels) |
+| `runner/src/Host` | runner-as-host: Laravel / Bare host + tx guard |
+| `runner/src/Run` | SliceRunner — instrument → load → drive → capture |
+| `runner/src/Rpc` | JSON-RPC dispatcher, HTTP + WebSocket transports |
+| `runner/bin` | `host.php` (WS resident), `server.php` (HTTP), `worker.php` (FrankenPHP) |
+| `ui/` | React + TS UI (canvas, editor, run controls, ledger) |
 | `docs/tech-design.md` | the implementation-facing design |
 | `docs/concept-notes.md` | the rationale record behind the decisions |
 

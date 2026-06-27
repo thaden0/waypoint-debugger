@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Waypoint\Runner\Rpc;
 
 use Waypoint\Runner\Capture\Recorder;
+use Waypoint\Runner\Host\HostInterface;
+use Waypoint\Runner\Reconstruct\Invoker;
+use Waypoint\Runner\Run\SliceRunner;
 use Waypoint\Runner\Structure\StructureExtractor;
 use Waypoint\Runner\Swap\ProblemScanner;
 use Waypoint\Runner\Swap\Swapper;
@@ -13,8 +16,8 @@ use Waypoint\Runner\Waypoint\WaypointInstrumenter;
 /**
  * Maps JSON-RPC method names to the runner's capabilities. This is the concrete
  * realization of the per-language adapter contract for PHP — parse, scan,
- * instrument, swap, ledger. A JS/TS adapter would expose the same method names
- * over the same wire.
+ * instrument, swap, ledger, and (when a host is attached) live run + invoke.
+ * A JS/TS adapter would expose the same method names over the same wire.
  */
 final class MethodRegistry
 {
@@ -23,10 +26,12 @@ final class MethodRegistry
     private Swapper $swapper;
     private WaypointInstrumenter $waypoints;
     private string $projectRoot;
+    private ?HostInterface $host;
 
-    public function __construct(string $projectRoot)
+    public function __construct(string $projectRoot, ?HostInterface $host = null)
     {
         $this->projectRoot = rtrim($projectRoot, '/');
+        $this->host = $host;
         $this->structure = new StructureExtractor();
         $this->scanner = new ProblemScanner();
         $this->swapper = new Swapper();
@@ -36,12 +41,16 @@ final class MethodRegistry
     /** @return array<string,callable> */
     public function methods(): array
     {
-        return [
+        $methods = [
             'runner.info' => fn () => [
                 'language' => 'php',
                 'phpVersion' => PHP_VERSION,
                 'projectRoot' => $this->projectRoot,
-                'capabilities' => ['structure', 'scan', 'swap', 'waypoint', 'ledger'],
+                'capabilities' => array_merge(
+                    ['structure', 'scan', 'swap', 'waypoint', 'ledger'],
+                    $this->host !== null ? ['host', 'run', 'invoke'] : []
+                ),
+                'host' => $this->host?->describe(),
             ],
 
             'fs.list' => fn (array $p) => $this->fsList($p['glob'] ?? '**/*.php'),
@@ -72,6 +81,65 @@ final class MethodRegistry
             'ledger.reset' => function () {
                 Recorder::reset();
                 return ['ok' => true];
+            },
+        ];
+
+        if ($this->host !== null) {
+            $methods += $this->hostMethods($this->host);
+        }
+
+        return $methods;
+    }
+
+    /**
+     * Live-run methods, available only when a host is attached (the resident
+     * bin/host.php process). The HTTP server runs host-less for static analysis.
+     *
+     * @return array<string,callable>
+     */
+    private function hostMethods(HostInterface $host): array
+    {
+        return [
+            'host.describe' => fn () => $host->describe(),
+            'host.boot' => function () use ($host) {
+                $host->boot();
+                return $host->describe();
+            },
+            'host.entry' => fn (array $p) => $host->renderEntry(
+                $p['method'] ?? 'GET',
+                $p['uri'] ?? '/',
+                $p['params'] ?? []
+            ),
+
+            // Drive a slice: instrument (waypoints + swaps), load, run the entry,
+            // populate the ledger. Captures stream over the Notifier as they happen.
+            'run.slice' => function (array $p) use ($host) {
+                Recorder::reset();
+                $host->boot();
+                $runner = new SliceRunner($host);
+                $source = $p['source'] ?? $this->readProjectFile($p['path']);
+                $result = $runner->run([
+                    'source' => $source,
+                    'class' => $p['class'],
+                    'method' => $p['method'],
+                    'args' => $p['args'] ?? [],
+                    'receiverArgs' => $p['receiverArgs'] ?? [],
+                    'waypoints' => $p['waypoints'] ?? [],
+                    'swaps' => $p['swaps'] ?? [],
+                ]);
+                $result['ledger'] = Recorder::ledger();
+                return $result;
+            },
+
+            // Reconstruct + invoke from a captured (or authored) ledger entry.
+            'run.invoke' => function (array $p) use ($host) {
+                $entry = isset($p['entry']) ? $p['entry'] : Recorder::entry((int) ($p['seq'] ?? -1));
+                if ($entry === null) {
+                    throw new RpcException(-32010, 'no ledger entry for seq ' . ($p['seq'] ?? '?'));
+                }
+                [$begin, $commit, $rollback] = $host->transactionHooks();
+                $invoker = new Invoker($begin, $commit, $rollback);
+                return $invoker->invoke($entry, $p['method'], $p['mode'] ?? 'peek');
             },
         ];
     }

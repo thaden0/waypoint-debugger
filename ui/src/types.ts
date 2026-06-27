@@ -111,5 +111,39 @@ export interface SwapSite {
   label: string;
 }
 
+export interface Snapshot {
+  tier: 1 | 2 | 3;
+  type: string;
+  preview: unknown;
+  note?: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  seq: number;
+  receiver: Snapshot;
+  args: Snapshot[];
+  reproducible: boolean;
+}
+
+export interface RunResult {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+  runtimeClass?: string;
+  ledgerCount?: number;
+  ledger?: LedgerEntry[];
+}
+
+export interface InvokeResult {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+  mode: string;
+  committed: boolean;
+  reproducible: boolean;
+}
+
 export type Mode = 'idle' | 'running';
 export type View = 'canvas' | 'code';
+export type Transport = 'ws' | 'http' | 'none';

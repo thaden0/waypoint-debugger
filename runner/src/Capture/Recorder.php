@@ -35,6 +35,17 @@ final class Recorder
         ];
         $entry['reproducible'] = self::isReproducible($entry);
         self::$ledger[] = $entry;
+
+        // Stream the capture to any connected UI so the ledger fills live.
+        \Waypoint\Runner\Rpc\Notifier::notify('ledger.captured', self::publicEntry($entry));
+    }
+
+    /** A single ledger entry with raw blobs stripped — the wire shape. */
+    private static function publicEntry(array $entry): array
+    {
+        $entry['receiver'] = self::publicView($entry['receiver']);
+        $entry['args'] = array_map([self::class, 'publicView'], $entry['args']);
+        return $entry;
     }
 
     /**
@@ -122,11 +133,7 @@ final class Recorder
     public static function ledger(): array
     {
         // Strip raw blobs from the wire view; the coordinator keys by seq.
-        return array_map(static function (array $e): array {
-            $e['receiver'] = self::publicView($e['receiver']);
-            $e['args'] = array_map([self::class, 'publicView'], $e['args']);
-            return $e;
-        }, self::$ledger);
+        return array_map([self::class, 'publicEntry'], self::$ledger);
     }
 
     /** @return array<string,mixed> */
