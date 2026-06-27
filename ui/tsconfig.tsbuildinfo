@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/types.ts","./src/canvas/Canvas.tsx","./src/canvas/ClassNode.tsx","./src/canvas/layout.ts","./src/editor/CodeEditor.tsx","./src/panels/Explorer.tsx","./src/panels/RunPanels.tsx","./src/panels/SwapPanel.tsx","./src/rpc/client.ts","./src/store/useStore.ts"],"version":"5.9.3"}
