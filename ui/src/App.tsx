@@ -5,6 +5,7 @@ import { CodeEditor } from './editor/CodeEditor';
 import { Explorer } from './panels/Explorer';
 import { SwapPanel } from './panels/SwapPanel';
 import { RunControls } from './panels/RunPanel';
+import { ApiConsole } from './panels/ApiConsole';
 import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
@@ -103,6 +104,9 @@ export default function App() {
           <button className={view === 'code' ? 'is-active' : ''} onClick={() => setView('code')}>
             Code
           </button>
+          <button className={view === 'api' ? 'is-active' : ''} onClick={() => setView('api')}>
+            API
+          </button>
         </nav>
 
         {view === 'code' && openPath && (
@@ -140,6 +144,11 @@ export default function App() {
         </div>
       </header>
 
+      {view === 'api' ? (
+        <div className="workbench workbench--api">
+          <ApiConsole />
+        </div>
+      ) : (
       <div className="workbench">
         {/* Left rail: explorer always available. */}
         <aside className="rail">
@@ -184,6 +193,7 @@ export default function App() {
           </section>
         </aside>
       </div>
+      )}
 
       {!connected && (
         <div className="banner">

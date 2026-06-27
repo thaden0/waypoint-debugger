@@ -9,6 +9,7 @@ use Waypoint\Runner\Capture\Recorder;
 use Waypoint\Runner\Host\BareHost;
 use Waypoint\Runner\Host\HostFactory;
 use Waypoint\Runner\Reconstruct\Invoker;
+use Waypoint\Runner\Rpc\MethodRegistry;
 use Waypoint\Runner\Rpc\Notifier;
 use Waypoint\Runner\Rpc\WebSocketFrame;
 use Waypoint\Runner\Run\SliceRunner;
@@ -19,6 +20,32 @@ final class HostRunTest extends TestCase
     {
         Notifier::setSink(null);
         Recorder::reset();
+    }
+
+    public function testApiRoutesEmptyForBareHostAndCollectionPersists(): void
+    {
+        $dir = sys_get_temp_dir() . '/wp_api_' . uniqid();
+        mkdir($dir);
+        $methods = (new MethodRegistry($dir, new BareHost($dir)))->methods();
+
+        // No router in bare mode.
+        $this->assertSame([], $methods['api.routes']()['routes']);
+
+        // Default collection, then a save/load round-trip through .waypoint/api.json.
+        $this->assertSame([], $methods['api.collection.load']()['collection']['requests']);
+        $methods['api.collection.save'](['collection' => [
+            'requests' => [['id' => 'r1', 'name' => 'List tasks', 'method' => 'GET', 'uri' => '/tasks/stats']],
+            'environments' => [['name' => 'local', 'vars' => []]],
+            'activeEnv' => 'local',
+        ]]);
+        $loaded = $methods['api.collection.load']()['collection'];
+        $this->assertCount(1, $loaded['requests']);
+        $this->assertSame('local', $loaded['activeEnv']);
+        $this->assertFileExists($dir . '/.waypoint/api.json');
+
+        unlink($dir . '/.waypoint/api.json');
+        rmdir($dir . '/.waypoint');
+        rmdir($dir);
     }
 
     public function testHostFactoryFallsBackToBare(): void
