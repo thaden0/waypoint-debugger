@@ -149,8 +149,10 @@ interface ApiState {
   sending: boolean;
   history: ApiHistory[];
   collectionTab: 'routes' | 'saved';
+  refreshing: boolean;
 
   load: () => Promise<void>;
+  refreshRoutes: () => Promise<void>;
   patchDraft: (p: Partial<ApiRequest>) => void;
   setDraft: (r: ApiRequest) => void;
   loadRoute: (r: ApiRoute) => void;
@@ -189,6 +191,7 @@ export const useApiStore = create<ApiState>((set, get) => ({
   sending: false,
   history: [],
   collectionTab: 'routes',
+  refreshing: false,
 
   load: async () => {
     try {
@@ -207,6 +210,22 @@ export const useApiStore = create<ApiState>((set, get) => ({
       });
     } catch (e) {
       set({ loaded: true, response: { ok: false, error: `load failed: ${(e as Error).message}` } });
+    }
+  },
+
+  // Re-introspect routes only (cheap, keeps the collection/draft) — runs on every
+  // entry into the API tab and from the manual refresh button, so a route added to
+  // the project shows up without restarting anything.
+  refreshRoutes: async () => {
+    if (get().refreshing) return;
+    set({ refreshing: true });
+    try {
+      const { routes } = await rpc<{ routes: ApiRoute[] }>('api.routes');
+      set({ routes });
+    } catch {
+      // leave the existing list in place on a transient failure
+    } finally {
+      set({ refreshing: false });
     }
   },
 

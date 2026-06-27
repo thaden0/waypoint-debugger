@@ -223,8 +223,19 @@ final class MethodRegistry
                 $p['params'] ?? []
             ),
 
-            // API console: introspect the booted router into an auto-collection.
-            'api.routes' => fn () => ['routes' => $this->requireHost()->routes()],
+            // API console: introspect routes from a FRESH boot (a short-lived
+            // subprocess), so the listing stays in sync with the route files on
+            // disk instead of the resident host's boot-time snapshot. ~one boot of
+            // cost, paid on tab-open / explicit refresh.
+            'api.routes' => function () {
+                $runner = new RequestRunner(dirname(__DIR__, 2));
+                $res = $runner->run([
+                    'projectRoot' => $this->projectRoot,
+                    'driver' => $this->host?->describe()['driver'],
+                    'entry' => ['kind' => 'routes'],
+                ]);
+                return ['routes' => $res['routes'] ?? []];
+            },
 
             // API console: send a request. Two targets — in-process through the
             // instrumented kernel (capture for free, fills the ledger), or a plain

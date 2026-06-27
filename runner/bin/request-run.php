@@ -63,6 +63,20 @@ foreach ($config['psr4'] ?? [] as $prefix => $dir) {
 
 $host = HostFactory::for($config['projectRoot'] ?? getcwd(), $config['driver'] ?? null);
 
+// Route introspection: a one-shot fresh boot so the listing reflects the route
+// files on disk right now, not the resident host's boot-time snapshot. No
+// instrumentation needed, so short-circuit before the wrapper/recorder setup.
+if ((($config['entry']['kind'] ?? '') === 'routes')) {
+    try {
+        $host->boot();
+        $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => ['ok' => true, 'routes' => $host->routes()]]);
+        exit(0);
+    } catch (\Throwable $e) {
+        $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => ['ok' => false, 'error' => $e->getMessage(), 'routes' => []]]);
+        exit(1);
+    }
+}
+
 // Register BEFORE boot/entry so targeted classes are instrumented on first load.
 InstrumentingStreamWrapper::activate($config['projectRoot'] ?? getcwd(), $config['targets'] ?? []);
 

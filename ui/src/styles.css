@@ -650,3 +650,10 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .api-test.fail .api-test__mark { color: var(--bp); }
 .api-test__name { color: var(--text); }
 .api-test__err { color: var(--bp); font-family: ui-monospace, monospace; font-size: 11px; margin-left: auto; }
+
+.api-side__tabs-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.api-side__tabs-right .api-side__new { margin-left: 0; }
+.api-side__refresh { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; }
+.api-side__refresh:hover { color: var(--brass); }
+.api-side__refresh.spinning { animation: wp-spin 0.7s linear infinite; color: var(--brass); }
+@keyframes wp-spin { to { transform: rotate(360deg); } }

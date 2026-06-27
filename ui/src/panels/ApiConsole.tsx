@@ -7,11 +7,14 @@ import { useApiStore, METHODS, type KV, type ApiRoute, type ApiRequest } from '.
 // a plain server-side call.
 export function ApiConsole() {
   const load = useApiStore((s) => s.load);
-  const loaded = useApiStore((s) => s.loaded);
+  const refreshRoutes = useApiStore((s) => s.refreshRoutes);
 
+  // First open does the full collection load; every subsequent entry into the
+  // tab just re-introspects routes, so newly added endpoints appear on their own.
   useEffect(() => {
-    if (!loaded) void load();
-  }, [loaded, load]);
+    if (useApiStore.getState().loaded) void refreshRoutes();
+    else void load();
+  }, [load, refreshRoutes]);
 
   return (
     <div className="api">
@@ -35,6 +38,8 @@ function CollectionSidebar() {
   const deleteSaved = useApiStore((s) => s.deleteSaved);
   const newRequest = useApiStore((s) => s.newRequest);
   const draftId = useApiStore((s) => s.draft.id);
+  const refreshRoutes = useApiStore((s) => s.refreshRoutes);
+  const refreshing = useApiStore((s) => s.refreshing);
 
   return (
     <aside className="api-side">
@@ -42,7 +47,12 @@ function CollectionSidebar() {
       <div className="api-side__tabs">
         <button className={tab === 'routes' ? 'on' : ''} onClick={() => setTab('routes')}>Routes <span className="api-side__count">{routes.length}</span></button>
         <button className={tab === 'saved' ? 'on' : ''} onClick={() => setTab('saved')}>Saved <span className="api-side__count">{saved.length}</span></button>
-        <button className="api-side__new" title="New request" onClick={() => newRequest()}>+</button>
+        <div className="api-side__tabs-right">
+          {tab === 'routes' && (
+            <button className={'api-side__refresh' + (refreshing ? ' spinning' : '')} title="Re-introspect routes from a fresh boot" onClick={() => refreshRoutes()}>↻</button>
+          )}
+          <button className="api-side__new" title="New request" onClick={() => newRequest()}>+</button>
+        </div>
       </div>
 
       <div className="api-side__list">
