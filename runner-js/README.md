@@ -21,6 +21,8 @@ satisfying a fixed contract.
 | `capture` (ledger + tier gate) | serialize, tier-3 wall | structuredClone, tier-3 wall |
 | `host / run` | FrankenPHP / Bare + re-namespace eval | Node `vm` context |
 | `reconstruct + invoke` | unserialize + `$r->m(...$a)` | rebuild via proto + `r[m](...a)` |
+| `breakpoints` | `get_defined_vars()` at the line | static in-scope names (TDZ-safe) at the line |
+| `docker mode` | compose parse/classify/reach + Laravel env | same logic + Node env (DATABASE_URL/REDIS_URL) |
 | `transport` | pure-PHP WebSocket | `ws` package |
 
 ## Run

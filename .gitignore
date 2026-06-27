@@ -20,3 +20,6 @@
 
 # TS build info
 *.tsbuildinfo
+
+# JS docker integration temp
+/runner-js/.tmp-redis-*

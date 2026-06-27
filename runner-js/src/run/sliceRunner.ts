@@ -1,6 +1,8 @@
 import vm from 'node:vm';
 import ts from 'typescript';
 import { recorder } from '../capture/recorder.js';
+import { breakpoint, BreakpointHalt } from '../debug/breakpoint.js';
+import { BreakpointInstrumenter } from '../debug/breakpointInstrumenter.js';
 import type { Host } from '../host/host.js';
 import { Swapper } from '../swap/swapper.js';
 import { WaypointInstrumenter } from '../waypoint/instrumenter.js';
@@ -20,6 +22,8 @@ export interface RunRequest {
   receiverArgs?: unknown[];
   waypoints?: WaypointSpec[];
   swaps?: SwapSpec[];
+  breakpoints?: Array<{ line: number; id?: string }>;
+  breakpointMode?: 'halt' | 'trace';
 }
 
 export interface RunResult {
@@ -27,6 +31,8 @@ export interface RunResult {
   result?: unknown;
   error?: string;
   ledgerCount?: number;
+  paused?: boolean;
+  breakpoint?: { id: string; scope: Record<string, unknown> };
 }
 
 export class SliceRunner {
@@ -38,6 +44,9 @@ export class SliceRunner {
 
     if (req.swaps?.length) source = new Swapper().apply(source, req.swaps, path).source;
     if (req.waypoints?.length) source = new WaypointInstrumenter().instrument(source, req.waypoints, path).source;
+    if (req.breakpoints?.length) source = new BreakpointInstrumenter().instrument(source, req.breakpoints, path).source;
+    breakpoint.reset();
+    breakpoint.setMode(req.breakpointMode ?? 'halt');
 
     let jsSource: string;
     try {
@@ -58,6 +67,7 @@ export class SliceRunner {
       structuredClone,
       __waypointSwaps: {},
       __wpCapture: (id: string, receiver: unknown, args: unknown[]) => recorder.capture(id, receiver, args),
+      __wpBreakpoint: (id: string, vars: Record<string, unknown>) => breakpoint.hit(id, vars),
     };
 
     try {
@@ -92,6 +102,9 @@ export class SliceRunner {
       return { ok: true, result: summarize(result), ledgerCount: recorder.ledgerPublic().length };
     } catch (e) {
       rollback();
+      if (e instanceof BreakpointHalt) {
+        return { ok: true, paused: true, breakpoint: { id: e.bpId, scope: e.scope } };
+      }
       return { ok: false, error: (e as Error).message };
     }
   }

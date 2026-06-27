@@ -1,4 +1,5 @@
 import { recorder } from './capture/recorder.js';
+import { breakpoint } from './debug/breakpoint.js';
 import { BareHost } from './host/host.js';
 import { buildMethods } from './rpc/methods.js';
 import { notifier } from './rpc/notifier.js';
@@ -19,8 +20,9 @@ const wsHost = process.env.WP_WS_HOST ?? '127.0.0.1';
 const host = new BareHost(projectRoot);
 host.boot();
 
-// Stream captures live to connected UIs.
+// Stream captures + breakpoint hits live to connected UIs.
 recorder.setNotifier((entry) => notifier.notify('ledger.captured', entry));
+breakpoint.setNotifier((hit) => notifier.notify('breakpoint.hit', hit));
 
 const methods = buildMethods(projectRoot, host);
 startWsServer(methods, wsHost, wsPort);

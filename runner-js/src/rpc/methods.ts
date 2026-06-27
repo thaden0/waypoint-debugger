@@ -3,6 +3,8 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { recorder } from '../capture/recorder.js';
 import { CdpTransport } from '../cdp/cdpTransport.js';
+import { breakpoint } from '../debug/breakpoint.js';
+import { Orchestrator } from '../docker/orchestrator.js';
 import type { Host } from '../host/host.js';
 import { Invoker } from '../reconstruct/invoker.js';
 import { SliceRunner } from '../run/sliceRunner.js';
@@ -53,9 +55,24 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       language: 'js',
       runtime: `node ${process.version}`,
       projectRoot: root,
-      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp'],
+      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp', 'docker'],
       host: host.describe(),
     }),
+
+    'docker.scan': () => {
+      const orch = Orchestrator.forRoot(root);
+      return orch ? { available: true, ...orch.scan() } : { available: false };
+    },
+    'docker.up': (p: { services?: string[] }) => {
+      const orch = Orchestrator.forRoot(root);
+      if (!orch) throw rpcError(-32030, 'no compose file in project root');
+      return orch.up(p.services ?? null);
+    },
+    'docker.down': () => {
+      const orch = Orchestrator.forRoot(root);
+      if (!orch) throw rpcError(-32030, 'no compose file in project root');
+      return orch.down();
+    },
 
     'fs.read': (p: { path: string }) => ({ path: p.path, source: read(p.path) }),
     'fs.list': async () => ({ root, paths: await listSources(root) }),
@@ -93,6 +110,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
 
     'run.slice': async (p: any) => {
       recorder.reset();
+      breakpoint.reset();
       host.boot();
       const result = await new SliceRunner(host).run({
         source: p.source ?? read(p.path),
@@ -103,8 +121,10 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
         receiverArgs: p.receiverArgs ?? [],
         waypoints: p.waypoints ?? [],
         swaps: p.swaps ?? [],
+        breakpoints: p.breakpoints ?? [],
+        breakpointMode: p.breakpointMode ?? 'halt',
       });
-      return { ...result, ledger: recorder.ledgerPublic() };
+      return { ...result, ledger: recorder.ledgerPublic(), breakpoints: breakpoint.hits() };
     },
 
     'run.invoke': async (p: { seq: number; method: string; mode?: 'peek' | 'destructive' }) =>

@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    command: node dist/server.js
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: secret
+
+  redis:
+    image: redis:7-alpine
+    # no published ports -> network-join required
+
+  worker:
+    build: .
+    command: npm run worker
