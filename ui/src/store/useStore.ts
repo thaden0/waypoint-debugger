@@ -102,6 +102,10 @@ interface State {
   projectStatus: ProjectStatus | null;
   provisioning: string | null;
   statusDismissed: boolean;
+  cdpAttached: boolean;
+  cdpUrl: string;
+  network: NetworkRecord[];
+  networkAll: boolean;
   browserSrc: string | null;
   log: string[];
 
@@ -148,6 +152,22 @@ interface State {
   loadStatus: () => Promise<void>;
   provision: (action: string) => Promise<void>;
   dismissStatus: () => void;
+  setCdpUrl: (url: string) => void;
+  setNetworkAll: (all: boolean) => void;
+  attachBrowser: () => Promise<void>;
+  detachBrowser: () => Promise<void>;
+  pollNetwork: () => Promise<void>;
+}
+
+export interface NetworkRecord {
+  requestId: string;
+  method: string;
+  url: string;
+  type: string;
+  status?: number;
+  mimeType?: string;
+  durationMs?: number;
+  failed?: string;
 }
 
 export interface WorkspaceProject {
@@ -180,6 +200,13 @@ export interface ProjectConfigShape {
 async function rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   if (wsClient.status === 'open') return wsClient.call<T>(method, params);
   return call<T>(method, params);
+}
+
+// Route a call to the frontend runner (CDP lives there). Throws if none.
+async function rpcFrontend<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  const fe = runners.conn('frontend');
+  if (!fe || fe.status !== 'open') throw new Error('no frontend runner connected');
+  return fe.call<T>(method, params);
 }
 
 // Reconstruct + invoke one checkpoint. Whole-request entries carry a base64
@@ -249,6 +276,10 @@ export const useStore = create<State>((set, get) => ({
   projectStatus: null,
   provisioning: null,
   statusDismissed: false,
+  cdpAttached: false,
+  cdpUrl: 'http://localhost:9222',
+  network: [],
+  networkAll: false,
   browserSrc: null,
   log: [],
 
@@ -729,6 +760,33 @@ export const useStore = create<State>((set, get) => ({
   },
 
   dismissStatus: () => set({ statusDismissed: true }),
+
+  setCdpUrl: (url) => set({ cdpUrl: url }),
+  setNetworkAll: (all) => { set({ networkAll: all }); void get().pollNetwork(); },
+
+  attachBrowser: async () => {
+    try {
+      await rpcFrontend('cdp.attach', { wsUrl: get().cdpUrl });
+      set({ cdpAttached: true });
+      await get().pollNetwork();
+    } catch (e) {
+      get().log.push(`cdp attach failed: ${(e as Error).message}`);
+      set({ cdpAttached: false });
+    }
+  },
+
+  detachBrowser: async () => {
+    try { await rpcFrontend('cdp.detach'); } catch { /* ignore */ }
+    set({ cdpAttached: false, network: [] });
+  },
+
+  pollNetwork: async () => {
+    if (!get().cdpAttached) return;
+    try {
+      const res = await rpcFrontend<{ requests: NetworkRecord[] }>('cdp.network', { all: get().networkAll });
+      set({ network: res.requests });
+    } catch { /* transient */ }
+  },
 }));
 
 // Dev-only handle: lets you poke the live store from the console (and drives

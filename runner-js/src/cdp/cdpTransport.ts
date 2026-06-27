@@ -14,10 +14,28 @@ export interface PausedScope {
   scopes: Array<{ type: string; objectId?: string }>;
 }
 
+// One captured browser request. `type` is the CDP ResourceType (XHR, Fetch,
+// Document, Script, Image, …); the UI defaults to showing only the API traffic
+// (XHR/Fetch), not assets.
+export interface NetworkRecord {
+  requestId: string;
+  method: string;
+  url: string;
+  type: string;
+  status?: number;
+  mimeType?: string;
+  startedMs: number;
+  durationMs?: number;
+  failed?: string;
+}
+
+const API_TYPES = new Set(['XHR', 'Fetch']);
+
 export class CdpTransport {
   readonly client = new CdpClient();
   readonly ledger = new FrameworkStateLedger();
   private lastPaused: PausedScope | null = null;
+  private network = new Map<string, NetworkRecord>();
 
   async attach(wsUrl: string): Promise<void> {
     await this.client.connect(wsUrl);
@@ -25,6 +43,10 @@ export class CdpTransport {
     await this.client.send('Debugger.enable').catch(() => {
       /* page target may not allow Debugger; framework-state capture still works */
     });
+    await this.client.send('Network.enable').catch(() => {
+      /* network capture is best-effort */
+    });
+    this.wireNetwork();
 
     this.client.on('Debugger.paused', (params) => {
       const top = params.callFrames?.[0];
@@ -34,7 +56,11 @@ export class CdpTransport {
       };
     });
 
-    await this.injectAgent();
+    // The framework-state agent is best-effort: a page with no store (or a plain
+    // page) shouldn't block attach or network capture.
+    await this.injectAgent().catch(() => {
+      /* no framework store — network + paused-scope still work */
+    });
   }
 
   /** Inject the self-contained agent into the page. */
@@ -70,6 +96,49 @@ export class CdpTransport {
 
   lastPause(): PausedScope | null {
     return this.lastPaused;
+  }
+
+  // Capture the browser's network activity. CDP delivers a request in stages
+  // (will-be-sent → response → finished/failed); we merge them by requestId.
+  private wireNetwork(): void {
+    this.client.on('Network.requestWillBeSent', (p: any) => {
+      this.network.set(p.requestId, {
+        requestId: p.requestId,
+        method: p.request?.method ?? 'GET',
+        url: p.request?.url ?? '',
+        type: p.type ?? 'Other',
+        startedMs: (p.timestamp ?? 0) * 1000,
+      });
+    });
+    this.client.on('Network.responseReceived', (p: any) => {
+      const rec = this.network.get(p.requestId);
+      if (rec) {
+        rec.status = p.response?.status;
+        rec.mimeType = p.response?.mimeType;
+        if (p.type) rec.type = p.type;
+      }
+    });
+    this.client.on('Network.loadingFinished', (p: any) => {
+      const rec = this.network.get(p.requestId);
+      if (rec) rec.durationMs = Math.max(0, Math.round((p.timestamp ?? 0) * 1000 - rec.startedMs));
+    });
+    this.client.on('Network.loadingFailed', (p: any) => {
+      const rec = this.network.get(p.requestId);
+      if (rec) {
+        rec.failed = p.errorText ?? 'failed';
+        rec.durationMs = Math.max(0, Math.round((p.timestamp ?? 0) * 1000 - rec.startedMs));
+      }
+    });
+  }
+
+  /** Captured requests, newest first; API traffic (XHR/Fetch) only unless all. */
+  networkLog(all = false): NetworkRecord[] {
+    const list = [...this.network.values()].filter((r) => all || API_TYPES.has(r.type));
+    return list.sort((a, b) => b.startedMs - a.startedMs);
+  }
+
+  clearNetwork(): void {
+    this.network.clear();
   }
 
   async detach(): Promise<void> {

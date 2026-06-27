@@ -209,8 +209,18 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
     'cdp.attach': async (p: { wsUrl: string }) => {
       if (cdp) await cdp.detach();
       cdp = new CdpTransport();
-      await cdp.attach(p.wsUrl);
-      return { ok: true };
+      // Accept a browser CDP base (http://host:port) and discover its page target,
+      // or a direct page ws:// url.
+      let wsUrl = p.wsUrl;
+      if (/^https?:\/\//i.test(wsUrl)) {
+        const base = wsUrl.replace(/\/+$/, '');
+        const targets = (await (await fetch(`${base}/json`)).json()) as Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>;
+        const page = targets.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+        if (!page?.webSocketDebuggerUrl) throw rpcError(-32021, `no page target at ${base}`);
+        wsUrl = page.webSocketDebuggerUrl;
+      }
+      await cdp.attach(wsUrl);
+      return { ok: true, target: wsUrl };
     },
     'cdp.snapshot': async () => ({ state: await requireCdp().snapshotFrameworkState() }),
     'cdp.inject': async (p: { state: unknown }) => {
@@ -223,6 +233,11 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       return { state: await requireCdp().jump(p.seq) };
     },
     'cdp.scope': () => ({ paused: requireCdp().lastPause() }),
+    'cdp.network': (p: { all?: boolean }) => ({ requests: requireCdp().networkLog(p?.all ?? false) }),
+    'cdp.network.clear': () => {
+      requireCdp().clearNetwork();
+      return { ok: true };
+    },
     'cdp.detach': async () => {
       await cdp?.detach();
       cdp = null;

@@ -857,3 +857,34 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .runner-chip.role-backend .runner-chip__role { color: var(--accent-bright); }
 .runner-chip.role-frontend, .runner-chip.role-both { border-color: rgb(var(--brass-rgb) / 0.4); }
 .runner-chip.role-frontend .runner-chip__role, .runner-chip.role-both .runner-chip__role { color: var(--brass); }
+
+/* Bottom dock (tabbed: BE Variables/Console + FE Network) */
+.dock { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.dock__tabs { display: flex; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--line); background: var(--bg-1); }
+.dock__tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 5px 11px; font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.dock__tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.dock__badge { font-size: 8px; padding: 0 5px; border-radius: 8px; letter-spacing: 0.04em; }
+.dock__badge.be { color: var(--accent-bright); background: rgb(var(--accent-rgb) / 0.14); }
+.dock__badge.fe { color: var(--brass); background: rgb(var(--brass-rgb) / 0.14); }
+.dock__body { flex: 1; min-height: 0; overflow: auto; }
+
+/* Network panel */
+.net { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.net__bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.net__on { color: var(--ok); font-weight: 600; }
+.net__url { font-family: ui-monospace, monospace; }
+.net__input { flex: 1; min-width: 0; background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 4px 8px; font-family: ui-monospace, monospace; font-size: 11px; }
+.net__input:focus { outline: none; border-color: var(--accent); }
+.net__filter { color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+.net__btn { background: var(--bg-3); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 4px 11px; font-size: 11px; cursor: pointer; }
+.net__btn.primary { background: var(--cta-grad); border-color: rgb(var(--accent-rgb) / 0.5); color: #fff; box-shadow: var(--cta-glow); }
+.net__table { flex: 1; overflow: auto; min-height: 0; }
+.net__empty { padding: 14px; }
+.net__table table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.net__table th { position: sticky; top: 0; background: var(--bg-2); text-align: left; padding: 5px 10px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+.net__table td { padding: 4px 10px; border-bottom: 1px solid var(--line); font-family: ui-monospace, monospace; }
+.net__table tr.failed { background: rgb(var(--bp-rgb) / 0.06); }
+.net__ep { max-width: 460px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.net-verb { font-weight: 800; font-size: 10px; }
+.net-verb.v-get { color: #cda85c; } .net-verb.v-post { color: var(--ok); } .net-verb.v-put { color: var(--accent-bright); } .net-verb.v-delete { color: var(--bp); } .net-verb.v-patch { color: var(--warn); }
+.net__status.s-2 { color: var(--ok); } .net__status.s-3 { color: var(--warn); } .net__status.s-4, .net__status.s-5 { color: var(--bp); } .net__status.s-0 { color: var(--muted); }

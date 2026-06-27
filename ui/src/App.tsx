@@ -9,7 +9,8 @@ import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
-import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
+import { BrowserPane } from './panels/RunPanels';
+import { DockPanel } from './panels/DockPanel';
 import type { MarkerKind } from './types';
 import './styles.css';
 
@@ -148,11 +149,11 @@ export default function App() {
               {view === 'canvas' ? <Canvas /> : <CodeEditor placing={placing} />}
             </div>
 
-            {/* Bottom panels only in running mode — idle reclaims the space. */}
-            {mode === 'running' && (
+            {/* Bottom dock — in running mode, or whenever a frontend runner is
+                connected (so the Network tab is reachable). */}
+            {(mode === 'running' || runnersList.some((r) => r.capabilities.includes('cdp'))) && (
               <div className="stage__bottom">
-                <VariablesPanel />
-                <ConsolePanel />
+                <DockPanel />
               </div>
             )}
           </section>
