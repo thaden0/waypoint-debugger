@@ -899,3 +899,15 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .net__trace-row td { background: var(--card-a); border-bottom: 1px solid var(--line); }
 .net__trace-detail { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 10px; font-size: 11px; }
 .net__wp { color: var(--code-id); background: var(--bg-2); border-radius: 3px; padding: 1px 6px; }
+
+/* Outbound mocks (settings) */
+.settings__mocks { display: flex; flex-direction: column; gap: 5px; }
+.settings__mock { display: flex; gap: 5px; }
+.settings__mock input { background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 4px 7px; font-size: 11px; font-family: ui-monospace, monospace; }
+.settings__mock-pat { flex: 1; min-width: 0; }
+.settings__mock-status { width: 56px; }
+.settings__mock-body { flex: 1.2; min-width: 0; }
+.settings__mock input:focus { outline: none; border-color: var(--accent); }
+.settings__mock-del { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+.settings__mock-del:hover { color: var(--bp); }
+.settings__mock-add { align-self: flex-start; background: var(--bg-3); border: 1px solid var(--line); color: var(--accent-bright); border-radius: 5px; padding: 4px 10px; font-size: 11px; cursor: pointer; }

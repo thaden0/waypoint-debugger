@@ -20,16 +20,12 @@ final class ProjectConfig
     /** @return array{module:?string,providers:array{orm:?string,routes:?string},docker:array{compose:?string}} */
     public static function read(string $root): array
     {
-        $default = ['module' => null, 'providers' => ['orm' => null, 'routes' => null], 'docker' => ['compose' => null]];
         $file = self::path($root);
         if (!is_file($file)) {
-            return $default;
+            return self::normalize([]);
         }
         $data = json_decode((string) @file_get_contents($file), true);
-        if (!is_array($data)) {
-            return $default;
-        }
-        return self::normalize($data);
+        return self::normalize(is_array($data) ? $data : []);
     }
 
     public static function write(string $root, array $config): bool
@@ -53,6 +49,7 @@ final class ProjectConfig
             'docker' => [
                 'compose' => $data['docker']['compose'] ?? null,
             ],
+            'httpMocks' => is_array($data['httpMocks'] ?? null) ? array_values($data['httpMocks']) : [],
         ];
     }
 }

@@ -90,6 +90,8 @@ Breakpoint::setMode($config['breakpointMode'] ?? 'trace');
 
 try {
     $host->boot();
+    // Boundary-level outbound mocks (Http::fake) before driving the entry.
+    \Waypoint\Modules\Laravel\HttpMock::apply($config['httpMocks'] ?? []);
     $entry = $config['entry'] ?? ['kind' => 'http', 'method' => 'GET', 'uri' => '/'];
 
     if (($entry['kind'] ?? 'http') === 'call') {

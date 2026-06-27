@@ -203,10 +203,16 @@ export interface ModulesAvailable {
   detected: string | null;
   active: string | null;
 }
+export interface HttpMockEntry {
+  pattern: string;
+  status: number;
+  body: string;
+}
 export interface ProjectConfigShape {
   module: string | null;
   providers: { orm: string | null; routes: string | null };
   docker: { compose: string | null };
+  httpMocks: HttpMockEntry[];
 }
 
 // Transport router: prefer the WS host (full run capability), fall back to HTTP

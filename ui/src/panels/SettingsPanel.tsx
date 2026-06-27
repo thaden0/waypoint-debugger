@@ -20,7 +20,7 @@ export function SettingsPanel() {
   const projectRoot = useStore((s) => s.runner?.projectRoot);
 
   const composeFiles = useStore((s) => s.composeFiles);
-  const [draft, setDraft] = useState<ProjectConfigShape>({ module: null, providers: { orm: null, routes: null }, docker: { compose: null } });
+  const [draft, setDraft] = useState<ProjectConfigShape>({ module: null, providers: { orm: null, routes: null }, docker: { compose: null }, httpMocks: [] });
 
   useEffect(() => {
     if (config) setDraft(config);
@@ -97,6 +97,25 @@ export function SettingsPanel() {
                   <span className="settings__hint">Which compose file docker mode brings up (e.g. compose.dev.yaml vs compose.prod.yaml).</span>
                 </section>
               )}
+
+              <section className="settings__sec">
+                <div className="settings__sec-title">Outbound mocks <span className="muted">(Http::fake)</span></div>
+                <div className="settings__mocks">
+                  {draft.httpMocks.map((m, i) => (
+                    <div className="settings__mock" key={i}>
+                      <input className="settings__mock-pat" placeholder="api.stripe.com/*" value={m.pattern} spellCheck={false}
+                        onChange={(e) => setDraft({ ...draft, httpMocks: draft.httpMocks.map((x, j) => j === i ? { ...x, pattern: e.target.value } : x) })} />
+                      <input className="settings__mock-status" type="number" value={m.status}
+                        onChange={(e) => setDraft({ ...draft, httpMocks: draft.httpMocks.map((x, j) => j === i ? { ...x, status: Number(e.target.value) } : x) })} />
+                      <input className="settings__mock-body" placeholder='{"ok":true}' value={m.body} spellCheck={false}
+                        onChange={(e) => setDraft({ ...draft, httpMocks: draft.httpMocks.map((x, j) => j === i ? { ...x, body: e.target.value } : x) })} />
+                      <button className="settings__mock-del" onClick={() => setDraft({ ...draft, httpMocks: draft.httpMocks.filter((_, j) => j !== i) })}>×</button>
+                    </div>
+                  ))}
+                  <button className="settings__mock-add" onClick={() => setDraft({ ...draft, httpMocks: [...draft.httpMocks, { pattern: '', status: 200, body: '' }] })}>+ Add mock</button>
+                </div>
+                <span className="settings__hint">Fake outbound HTTP calls (URL pattern → response) on instrumented runs — boundary-level, distinct from line swaps.</span>
+              </section>
 
               <section className="settings__sec">
                 <div className="settings__sec-title">Available modules</div>

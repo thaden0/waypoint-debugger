@@ -374,6 +374,7 @@ final class MethodRegistry
                     'psr4' => $p['psr4'] ?? [],
                     'targets' => $p['targets'] ?? [],
                     'breakpointMode' => 'trace',
+                    'httpMocks' => ProjectConfig::read($this->projectRoot)['httpMocks'],
                     'entry' => [
                         'kind' => 'http',
                         'method' => $method,
@@ -401,6 +402,7 @@ final class MethodRegistry
                 $host = $this->requireHost();
                 Recorder::reset();
                 $host->boot();
+                \Waypoint\Modules\Laravel\HttpMock::apply(ProjectConfig::read($this->projectRoot)['httpMocks']);
                 $runner = new SliceRunner($host);
                 $source = $p['source'] ?? $this->readProjectFile($p['path']);
                 $result = $runner->run([
@@ -434,6 +436,7 @@ final class MethodRegistry
                     'targets' => $p['targets'] ?? [],
                     'entry' => $p['entry'] ?? ['kind' => 'http', 'method' => 'GET', 'uri' => '/'],
                     'breakpointMode' => $p['breakpointMode'] ?? 'trace',
+                    'httpMocks' => ProjectConfig::read($this->projectRoot)['httpMocks'],
                 ];
                 return $runner->run($config, static function (string $method, array $params): void {
                     Notifier::notify($method, $params); // ledger.captured + breakpoint.hit
