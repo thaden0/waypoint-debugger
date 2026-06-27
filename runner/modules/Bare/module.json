@@ -1,0 +1,9 @@
+{
+  "id": "bare",
+  "kind": "framework",
+  "extends": "php",
+  "role": "backend",
+  "detect": [],
+  "provides": { "module": "Waypoint\\Modules\\Bare\\BareModule" },
+  "capabilities": ["host", "run", "invoke"]
+}

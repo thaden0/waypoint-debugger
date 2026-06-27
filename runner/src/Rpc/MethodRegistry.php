@@ -7,7 +7,9 @@ namespace Waypoint\Runner\Rpc;
 use Waypoint\Runner\Capture\Recorder;
 use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostInterface;
-use Waypoint\Runner\Orm\ModelConsole;
+use Waypoint\Runner\Module\FrameworkModule;
+use Waypoint\Runner\Module\ModuleFactory;
+use Waypoint\Runner\Module\OrmProvider;
 use Waypoint\Runner\Reconstruct\Invoker;
 use Waypoint\Runner\Run\RequestRunner;
 use Waypoint\Runner\Run\SliceRunner;
@@ -29,16 +31,18 @@ final class MethodRegistry
     private Swapper $swapper;
     private WaypointInstrumenter $waypoints;
     private string $projectRoot;
+    private ?FrameworkModule $module;
     private ?HostInterface $host;
     private bool $manageHost;
     private ?\Waypoint\Runner\Debug\DebugManager $debug;
 
-    public function __construct(string $projectRoot, ?HostInterface $host = null, ?\Waypoint\Runner\Debug\DebugManager $debug = null)
+    public function __construct(string $projectRoot, ?FrameworkModule $module = null, ?\Waypoint\Runner\Debug\DebugManager $debug = null)
     {
         $this->projectRoot = rtrim($projectRoot, '/');
-        $this->host = $host;
+        $this->module = $module;
+        $this->host = $module?->host();
         $this->debug = $debug;
-        $this->manageHost = $host !== null; // resident host process re-points its host
+        $this->manageHost = $module !== null; // resident host process re-points its module
         $this->structure = new StructureExtractor();
         $this->scanner = new ProblemScanner();
         $this->swapper = new Swapper();
@@ -53,6 +57,23 @@ final class MethodRegistry
         return $this->host;
     }
 
+    private function requireModule(): FrameworkModule
+    {
+        if ($this->module === null) {
+            throw new RpcException(-32040, 'no framework module attached (static-analysis server)');
+        }
+        return $this->module;
+    }
+
+    private function requireOrm(): OrmProvider
+    {
+        $orm = $this->requireModule()->orm();
+        if ($orm === null) {
+            throw new RpcException(-32060, 'this framework has no ORM provider');
+        }
+        return $orm;
+    }
+
     /** @return array<string,callable> */
     public function methods(): array
     {
@@ -62,8 +83,9 @@ final class MethodRegistry
                 'phpVersion' => PHP_VERSION,
                 'projectRoot' => $this->projectRoot,
                 'capabilities' => array_merge(
-                    ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'api'],
-                    $this->host !== null ? ['host', 'run', 'invoke', 'orm'] : []
+                    ['structure', 'scan', 'swap', 'waypoint', 'ledger'],
+                    $this->module !== null ? ['host', 'run', 'invoke', 'api'] : [],
+                    $this->module?->orm() !== null ? ['orm'] : []
                 ),
                 'host' => $this->host?->describe(),
             ],
@@ -116,7 +138,8 @@ final class MethodRegistry
                 $this->projectRoot = $root;
                 Recorder::reset();
                 if ($this->manageHost) {
-                    $this->host = \Waypoint\Runner\Host\HostFactory::for($root, getenv('WP_HOST_DRIVER') ?: null);
+                    $this->module = ModuleFactory::for($root, getenv('WP_HOST_DRIVER') ?: null);
+                    $this->host = $this->module->host();
                 }
                 return [
                     'ok' => true,
@@ -204,54 +227,29 @@ final class MethodRegistry
     }
 
     /**
-     * ORM data console: work with the project's data through its own Eloquent
-     * models, evaluated in the booted host. A query is real PHP, transaction-
-     * guarded (peek rolls back, commit persists). models.capture bridges a result
-     * into the ledger so a queried record can drive the replay what-if loop.
+     * ORM data console — delegates to the framework module's OrmProvider (Eloquent
+     * for Laravel; null for frameworks without one). A query is real ORM code,
+     * transaction-guarded (peek rolls back, commit persists); models.capture
+     * bridges a result into the ledger for the replay what-if loop.
      *
      * @return array<string,callable>
      */
     private function ormMethods(): array
     {
-        $console = fn () => new ModelConsole($this->projectRoot, $this->requireHost());
+        $orm = fn (): OrmProvider => $this->requireOrm();
         return [
-            'models.list' => fn () => ['models' => $console()->listModels()],
-            'models.query' => fn (array $p) => $console()->query((string) ($p['expr'] ?? ''), (bool) ($p['commit'] ?? false)),
-            'models.table' => fn (array $p) => $console()->table(
+            'models.list' => fn () => ['models' => $orm()->listModels()],
+            'models.query' => fn (array $p) => $orm()->query((string) ($p['expr'] ?? ''), (bool) ($p['commit'] ?? false)),
+            'models.table' => fn (array $p) => $orm()->table(
                 (string) ($p['model'] ?? ''),
                 (int) ($p['page'] ?? 1),
                 (int) ($p['perPage'] ?? 50),
                 $p['filters'] ?? []
             ),
-            'models.relationships' => fn (array $p) => ['relationships' => $console()->relationships((string) ($p['model'] ?? ''))],
-            'models.alter' => fn (array $p) => $console()->alter((string) ($p['model'] ?? ''), $p['props'] ?? []),
-            'models.migrate' => fn (array $p) => $console()->migrate((bool) ($p['run'] ?? false)),
-
-            // Replay bridge: evaluate (peek), and if the result is an object, snapshot
-            // it into the ledger as a captured entry so it can be re-invoked with
-            // what-if inputs in the replay loop.
-            'models.capture' => function (array $p) use ($console) {
-                $res = $console()->query((string) ($p['expr'] ?? ''), false);
-                if (($res['ok'] ?? false) !== true) {
-                    return $res;
-                }
-                $this->requireHost();
-                Recorder::reset();
-                $expr = trim(rtrim((string) ($p['expr'] ?? ''), ';'));
-                // Re-evaluate to get the live object (Preview already rendered a copy).
-                try {
-                    /** @psalm-suppress ForbiddenCode */
-                    $obj = eval("return {$expr};");
-                } catch (\Throwable $e) {
-                    return ['ok' => false, 'error' => $e->getMessage()];
-                }
-                if (!is_object($obj)) {
-                    return ['ok' => false, 'error' => 'result is not a single object — capture needs a model instance'];
-                }
-                $id = 'Query::' . (new \ReflectionClass($obj))->getShortName();
-                Recorder::capture($id, $obj, []);
-                return ['ok' => true, 'ledger' => Recorder::ledger(), 'id' => $id];
-            },
+            'models.relationships' => fn (array $p) => ['relationships' => $orm()->relationships((string) ($p['model'] ?? ''))],
+            'models.alter' => fn (array $p) => $orm()->alter((string) ($p['model'] ?? ''), $p['props'] ?? []),
+            'models.migrate' => fn (array $p) => $orm()->migrate((bool) ($p['run'] ?? false)),
+            'models.capture' => fn (array $p) => $orm()->capture((string) ($p['expr'] ?? '')),
         ];
     }
 

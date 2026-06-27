@@ -1,0 +1,9 @@
+{
+  "id": "laravel",
+  "kind": "framework",
+  "extends": "php",
+  "role": "backend",
+  "detect": ["bootstrap/app.php", "artisan"],
+  "provides": { "module": "Waypoint\\Modules\\Laravel\\LaravelModule" },
+  "capabilities": ["host", "run", "invoke", "api", "orm"]
+}

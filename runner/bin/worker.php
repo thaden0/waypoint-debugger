@@ -30,9 +30,9 @@ if (!function_exists('frankenphp_handle_request')) {
 $projectRoot = getenv('PROJECT_ROOT') ?: getcwd();
 
 // Boot once, outside the request loop — the worker-mode win.
-$host = HostFactory::for($projectRoot, getenv('WP_HOST_DRIVER') ?: null);
-$host->boot();
-$registry = new MethodRegistry($projectRoot, $host);
+$module = \Waypoint\Runner\Module\ModuleFactory::for($projectRoot, getenv('WP_HOST_DRIVER') ?: null);
+$module->host()->boot();
+$registry = new MethodRegistry($projectRoot, $module);
 $dispatcher = new Dispatcher($registry->methods());
 
 $keepRunning = true;

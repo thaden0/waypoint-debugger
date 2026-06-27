@@ -51,8 +51,9 @@ if (getenv('WP_DOCKER') === '1') {
     }
 }
 
-$host = HostFactory::for($projectRoot, $force);
-fwrite(STDERR, "[host] driver=" . $host->describe()['driver'] . " root={$projectRoot}\n");
+$module = \Waypoint\Runner\Module\ModuleFactory::for($projectRoot, $force);
+$host = $module->host();
+fwrite(STDERR, "[host] module=" . $module->id() . " driver=" . $host->describe()['driver'] . " root={$projectRoot}\n");
 
 try {
     $host->boot();
@@ -62,7 +63,7 @@ try {
 }
 
 $debug = new \Waypoint\Runner\Debug\DebugManager();
-$registry = new MethodRegistry($projectRoot, $host, $debug);
+$registry = new MethodRegistry($projectRoot, $module, $debug);
 $dispatcher = new Dispatcher($registry->methods());
 
 $server = new WebSocketServer($dispatcher, '127.0.0.1', $wsPort, $debug);

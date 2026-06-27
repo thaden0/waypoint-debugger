@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Waypoint\Runner\Orm;
+namespace Waypoint\Modules\Laravel;
 
 use PhpParser\Node;
 use PhpParser\NodeFinder;
@@ -10,7 +10,9 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\CloningVisitor;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter\Standard;
+use Waypoint\Runner\Capture\Recorder;
 use Waypoint\Runner\Host\HostInterface;
+use Waypoint\Runner\Module\OrmProvider;
 use Waypoint\Runner\Support\Preview;
 
 /**
@@ -24,7 +26,7 @@ use Waypoint\Runner\Support\Preview;
  * It is essentially a visual, safe-by-default `artisan tinker` scoped to models,
  * reusing the resident host's container + DB connection.
  */
-final class ModelConsole
+final class EloquentOrmProvider implements OrmProvider
 {
     private const RELATION_METHODS = [
         'hasOne', 'hasMany', 'belongsTo', 'belongsToMany', 'hasOneThrough', 'hasManyThrough',
@@ -282,6 +284,34 @@ final class ModelConsole
         fclose($pipes[2]);
         $code = proc_close($proc);
         return ['ok' => $code === 0, 'ran' => $run, 'output' => trim($out . $errOut)];
+    }
+
+    /**
+     * Evaluate (peek) and, if the result is a single object, snapshot it into the
+     * ledger as a captured entry so it can be re-invoked with what-if inputs in
+     * the replay loop — the data front-door to reconstruct+invoke.
+     */
+    public function capture(string $expr): array
+    {
+        $res = $this->query($expr, false);
+        if (($res['ok'] ?? false) !== true) {
+            return $res;
+        }
+        $this->aliasModels();
+        Recorder::reset();
+        $code = trim(rtrim($expr, ';'));
+        try {
+            /** @psalm-suppress ForbiddenCode */
+            $obj = eval("return {$code};");
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+        if (!is_object($obj)) {
+            return ['ok' => false, 'error' => 'result is not a single object — capture needs a model instance'];
+        }
+        $id = 'Query::' . (new \ReflectionClass($obj))->getShortName();
+        Recorder::capture($id, $obj, []);
+        return ['ok' => true, 'ledger' => Recorder::ledger(), 'id' => $id];
     }
 
     // ---- internals ------------------------------------------------------------

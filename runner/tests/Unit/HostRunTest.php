@@ -26,7 +26,7 @@ final class HostRunTest extends TestCase
     {
         $dir = sys_get_temp_dir() . '/wp_api_' . uniqid();
         mkdir($dir);
-        $methods = (new MethodRegistry($dir, new BareHost($dir)))->methods();
+        $methods = (new MethodRegistry($dir, new \Waypoint\Modules\Bare\BareModule($dir)))->methods();
 
         // No router in bare mode.
         $this->assertSame([], $methods['api.routes']()['routes']);

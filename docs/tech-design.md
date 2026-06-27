@@ -644,12 +644,36 @@ and the CDP ledger.
 
 So new frameworks/languages are **additive**: implement the method set (or just the
 framework-specific slices — `routes()`, `models.*`, transaction hooks) for the new target
-and the same UI drives it. Today only the Laravel bridge implements the framework-specific
-slices (routes, ORM); a Symfony/Doctrine bridge, or a JS Express/Prisma bridge, would fill
-the same slots. This is deferred, not precluded — the contract + §14.3 registry (installable
-adapters) are the shape. We are **not** waiting to add frameworks before building features;
-we build each capability against the Laravel bridge first, behind the shared contract, so a
-second bridge inherits the UI for free.
+and the same UI drives it. We build each capability against the Laravel bridge first,
+behind the shared contract, so a second bridge inherits the UI for free.
+
+### 17.1 The module system (built)
+
+The "bridge" is now a concrete, single extension point — **modules over the wire
+protocol** (the LSP/DAP shape), not an in-process cross-language factory (different
+runtimes can't share one). Two layers:
+
+- **Across languages** the seam is the wire protocol, now **formalized** in
+  [`protocol/`](../protocol/README.md): transport, JSON-RPC framing, capability
+  negotiation, the method catalog, and notifications. Adding a language = ship a runner
+  that speaks it.
+- **Within a runner**, a **`FrameworkModule`** is the one thing you implement per
+  framework (`runner/src/Module/`). It supplies the framework-specific providers:
+  `HostInterface` (runtime), `RouteProvider` (api console), `OrmProvider` (data console).
+  `LaravelModule` wires Laravel; `BareModule` is the frameworkless fallback;
+  `EloquentOrmProvider` / `LaravelRouteProvider` are its providers. Providers are
+  swappable per project (Eloquent ↔ Doctrine) because every consumer talks only to the
+  interface.
+- A **`module.json` manifest** per module (`runner/modules/*/module.json`) declares
+  `id`/`kind`/`role`/`detect`/`provides`/`capabilities`; **`ModuleRegistry`** scans them
+  and resolves a module by its `detect` globs (most-specific wins). So adding a framework
+  = drop a `modules/<Name>/` directory with a manifest and provider classes — **no core
+  edit** ([`protocol/modules.md`](../protocol/modules.md)). `runner.info.capabilities` is
+  now derived from the resolved module (a framework with no ORM doesn't advertise `orm`).
+
+`MethodRegistry` holds a `FrameworkModule` (not a bare host) and routes `api.*` →
+`module->routes()`, `models.*` → `module->orm()`; `project.open` re-resolves the module.
+The §14.3 registry (installable modules) is the distribution layer on top.
 
 ---
 

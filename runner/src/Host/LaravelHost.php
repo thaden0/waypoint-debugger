@@ -80,35 +80,6 @@ final class LaravelHost implements HostInterface
         }
     }
 
-    public function routes(): array
-    {
-        $this->boot();
-        $router = $this->app?->make('router');
-        if ($router === null) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($router->getRoutes() as $route) {
-            $methods = array_values(array_filter(
-                $route->methods(),
-                static fn (string $m): bool => $m !== 'HEAD'
-            ));
-            $action = $route->getActionName();
-            $out[] = [
-                'methods' => $methods,
-                'uri' => '/' . ltrim($route->uri(), '/'),
-                'name' => $route->getName(),
-                'action' => is_string($action) ? $action : 'Closure',
-                'middleware' => array_values(array_unique($route->gatherMiddleware())),
-                'params' => array_values($route->parameterNames()),
-            ];
-        }
-        // Stable order: by URI then primary method.
-        usort($out, static fn (array $a, array $b): int => [$a['uri'], $a['methods'][0] ?? ''] <=> [$b['uri'], $b['methods'][0] ?? '']);
-        return $out;
-    }
-
     public function renderEntry(string $method, string $uri, array $params = [], array $options = []): array
     {
         $this->boot();

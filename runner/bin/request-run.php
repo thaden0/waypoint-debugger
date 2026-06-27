@@ -68,8 +68,9 @@ $host = HostFactory::for($config['projectRoot'] ?? getcwd(), $config['driver'] ?
 // instrumentation needed, so short-circuit before the wrapper/recorder setup.
 if ((($config['entry']['kind'] ?? '') === 'routes')) {
     try {
-        $host->boot();
-        $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => ['ok' => true, 'routes' => $host->routes()]]);
+        $module = \Waypoint\Runner\Module\ModuleFactory::for($config['projectRoot'] ?? getcwd(), $config['driver'] ?? null);
+        $routes = $module->routes()->routes();
+        $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => ['ok' => true, 'routes' => $routes]]);
         exit(0);
     } catch (\Throwable $e) {
         $emit(['jsonrpc' => '2.0', 'method' => 'run.result', 'params' => ['ok' => false, 'error' => $e->getMessage(), 'routes' => []]]);

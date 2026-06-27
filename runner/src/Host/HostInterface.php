@@ -41,14 +41,6 @@ interface HostInterface
     public function renderEntry(string $method, string $uri, array $params = [], array $options = []): array;
 
     /**
-     * Introspect the application's HTTP routes from the booted router, for the
-     * API console's auto-collection. Returns [] for hosts with no router (bare/JS).
-     *
-     * @return array<int,array{methods:array<int,string>,uri:string,name:?string,action:string,middleware:array<int,string>,params:array<int,string>}>
-     */
-    public function routes(): array;
-
-    /**
      * Transaction guard hooks for the Invoker. With a real DB they map to
      * begin/commit/rollBack; in bare mode they track a flag so peek-vs-commit
      * is still observable. Returned as [begin, commit, rollback].

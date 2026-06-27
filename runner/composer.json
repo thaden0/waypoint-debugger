@@ -13,7 +13,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Waypoint\\Runner\\": "src/"
+            "Waypoint\\Runner\\": "src/",
+            "Waypoint\\Modules\\": "modules/"
         }
     },
     "autoload-dev": {

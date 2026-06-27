@@ -1,0 +1,8 @@
+{
+  "id": "php",
+  "kind": "language",
+  "role": "backend",
+  "runner": { "cmd": ["php", "runner/bin/host.php"], "wsPortEnv": "WP_WS_PORT" },
+  "extensions": [".php"],
+  "monaco": "php"
+}
