@@ -459,11 +459,13 @@ auto-build the collection**, kept in sync as routes change.
   vs. keep lean and lean on the code-integration advantage.
 
 **Locked decisions (build):**
-- **Route source:** introspect the **booted host's router** (the resident host already
-  boots the app — pull `router->getRoutes()` from the container), not `artisan
-  route:list`. Richer (names, middleware, params, model bindings) and no subprocess.
-  New adapter slot `api.routes`; BareHost/JS return `[]` until a framework introspector
-  exists.
+- **Route source:** introspect the host's router (`router->getRoutes()` →
+  names/middleware/params/model bindings), not `artisan route:list`. **Done via a
+  one-shot fresh boot** (`request-run.php` `routes` entry kind) rather than the
+  resident host, so the listing stays in sync with the route files on disk — the
+  resident host caches routes from its boot, which went stale on edits. The UI
+  auto-refreshes on entering the API tab and via a ↻ button. New adapter slot
+  `api.routes`; BareHost/JS return `[]` until a framework introspector exists.
 - **Execution target — both, chosen per request.** Default: the **in-process booted
   kernel** (reuse `run.request`/`renderEntry`), which gives capture for free. Optional:
   a **plain external HTTP call** to a base URL, run server-side from the host (no CORS,
@@ -540,6 +542,58 @@ request context, relevant state, recent queries, and logs.
 - **Open questions to settle first:** error-detection hook surface (exception
   handler vs. a wrapper), what state is in-scope to capture (and PII/security),
   push vs. pull, and how the ring-buffer depth trades memory for history.
+
+### 14.5 Outbound HTTP mock (boundary-level), distinct from swaps
+
+Two layers of "mock," not redundant:
+- **Swaps (built):** mock at the **code-expression** level — replace a specific line
+  (`User::findOrFail($id)`, a `Http::get(...)` call) with a template/fake. Surgical,
+  tied to a location you can see.
+- **Outbound mock (future):** mock at the **boundary** — fake *any* outbound call
+  matching a URL pattern, regardless of call site, including calls buried in vendor
+  SDKs you'd never swap line-by-line. The thing swaps can't easily do: the same
+  endpoint hit from five places, or a dependency three layers into a package.
+
+Not needed for the core replay/reproducibility story, and **not** an "API intercept"
+we build from scratch: for Laravel the framework already provides `Http::fake([...])`,
+so this feature would *drive the framework's faking* during a run/replay (consistent
+with §5.5 "reuse the framework, don't build a generic recorder"). File as a future
+tier-3 reproducibility helper; surface it in the swap workbench as a "mock outbound
+calls" option, separate from line swaps.
+
+## 15. Setup & distribution (clone → run → connect)
+
+Goal (stated): clone from GitHub on a fresh Debian/Windows box, **run one file**, then
+connect and start using it — minimal manual steps. Today a new user faces three
+sub-projects (composer install in `runner/`, npm install in `runner-js/` and `ui/`),
+a UI build, and two long-lived processes (host on ws 9778, UI on 5180) started by
+hand — too much friction.
+
+**Recommendation — a single Node-based launcher as the primary path, Docker as the
+hermetic alternative.** Reasoning:
+- **Node CLI launcher (`bin/waypoint.mjs`, run as `node bin/waypoint.mjs up`).** Node
+  is already a dependency (UI + JS adapter), so "run a file" needs no new runtime, and
+  one script behaves identically on Windows/Linux/macOS (no parallel `setup.sh` +
+  `setup.ps1`). It does: **doctor** (check PHP ≥ 8.2, Node, Composer; print precise
+  remediation) → **install** (composer + both npm installs, skipped if up to date) →
+  **build** (UI) → **up** (spawn the host against a `--project` path, serve the UI,
+  open the browser, manage/clean up both processes). Subcommands: `doctor`, `up`,
+  `--project <path>`.
+- **Docker Compose (`docker compose up`) as the no-local-toolchain option.** Containers
+  for the PHP host + UI; the target project is bind-mounted. Hermetic PHP/Node
+  versions, truly one command. Trade-off: bind-mounting an arbitrary local project (its
+  `vendor/`, its DB/services) and reaching them is fiddlier than the native launcher,
+  so it's the secondary path, not the default.
+
+What this is **not**: a heavyweight bespoke "environment framework." Start with the
+launcher; the eventual **VS Code extension** (the packaging/distribution gap in §13)
+subsumes most of it — the extension bundles and starts the host/adapter and serves the
+UI in a webview, so "install the extension, open a project" replaces the script.
+
+Open questions before building: minimum PHP/Node versions to support; whether the
+launcher provisions a sample Laravel testbed for first-run (a `waypoint init` demo) vs.
+only attaching to an existing project; and whether to ship prebuilt UI assets in the
+repo (so `up` skips the build) or always build on first run.
 
 ---
 
