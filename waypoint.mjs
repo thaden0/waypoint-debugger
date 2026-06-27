@@ -232,6 +232,20 @@ async function up(flags, positional) {
     spawnTagged('rpc', cyan, 'php', ['-S', `127.0.0.1:${httpPort}`, path.join('runner', 'bin', 'server.php')], { env });
   }
 
+  // Frontend runner (role:both) — a JS runner on ws+1 for the FE half (analysis +
+  // CDP). Started when the project has a package.json, unless --no-frontend; force
+  // with --frontend. The UI probes ws+1 and shows it as a second runner.
+  const fePort = String(Number(wsPort) + 1);
+  const wantFE = flags.frontend !== false && flags['no-frontend'] === undefined &&
+    (flags.frontend !== undefined || existsSync(path.join(project, 'package.json')));
+  const feLang = langs.find((l) => l.id === (typeof flags.frontend === 'string' ? flags.frontend : 'js'));
+  if (wantFE && feLang && feLang.id !== backend.id && feLang.runner?.cmd?.length) {
+    info(`frontend  ${feLang.id} (${feLang.role}) → ws://127.0.0.1:${fePort}`);
+    spawnTagged('fe', yellow, feLang.runner.cmd[0], feLang.runner.cmd.slice(1), {
+      env: { ...process.env, PROJECT_ROOT: project, [feLang.runner.wsPortEnv || 'WP_WS_PORT']: fePort },
+    });
+  }
+
   let uiUrl = `http://localhost:${uiPort}`;
   if (flags.build) {
     info('Building UI…');
@@ -267,6 +281,8 @@ ${bold('Waypoint')} — visual checkpoint-replay debugger
 ${bold('Flags')}
   --project PATH    project to debug   ${dim('(default: bundled fixtures)')}
   --language ID     backend language module   ${dim('(default: php; see `modules`)')}
+  --frontend [ID]   also run a frontend runner on ws+1   ${dim('(auto when package.json present)')}
+  --no-frontend     don't start a frontend runner
   --build           serve a production UI build instead of the dev server
   --no-open         don't open the browser
   --force           reinstall dependencies even if present
