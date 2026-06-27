@@ -1,0 +1,367 @@
+# Visual Checkpoint-Replay Debugger — Technical Design
+
+**Status:** Draft for build. Supersedes the concept notes in `debug-tool-design.md` (which remains the rationale record). This document is the implementation-facing spec: the model we agreed on, the stack, and the build order.
+
+**First target:** PHP / Laravel CRUD. **Second target:** TypeScript / JavaScript.
+
+---
+
+## 1. What we're building
+
+A development and debugging tool that lets a developer:
+
+1. **Run a real entry** (a route the browser hits) and watch it execute, with a live view of the rendered output beside the code.
+2. **Drop waypoints** on public method calls — like breakpoints, but they *capture state* — so a reproduced state can be restarted from there.
+3. **Highlight and swap** problem code (`User::find(1)`, `now()`, an HTTP call) for arbitrary replacement code or a pre-made template.
+4. **Re-invoke from any waypoint** (or from a hand-authored mock entry) with the captured/authored state reconstructed, safely (transaction-rollback), against fakes or the real dockerized services.
+5. **Navigate the code as a diagram** — file-structure boxes that zoom down through class diagrams into a full editor.
+
+It is *not* a step-through debugger. The core gesture is **reconstruct-state-then-invoke**, not resume-mid-function.
+
+---
+
+## 2. Core model
+
+### 2.1 The central operation: reconstruct + invoke
+
+Everything reduces to one primitive:
+
+> **Reconstruct the receiver (`$this`) + the arguments of a public method call, then invoke `$receiver->method(...$args)` in a live, booted application, with I/O calls swapped and the whole thing wrapped in a rollback boundary.**
+
+This works *because* we constrain the re-entry point to a **public method call**. A public method is directly re-invokable — we never resume execution in the middle of a function, so PHP's lack of continuations is a non-issue. The "state" we must rebuild is just:
+
+- the **receiver** object (`$this`),
+- the **arguments**,
+- plus the **ambient application state** (container singletons, config, DB), which the runner supplies for free by keeping Laravel booted.
+
+I/O and non-determinism inside the method body are handled by **swaps** (§4) and **rollback** (§6), not by replaying a prior run.
+
+### 2.2 Slice
+
+A **slice** is the unit the tool reasons about: the bounded subset of code + state + dependencies involved in one operation.
+
+| Boundary | Meaning |
+|---|---|
+| **Entry** | A controller action, a waypoint method, or a mock entry. |
+| **Span** | The code that runs from the entry to the end / next breakpoint. |
+| **Live-state surface** | The variables/objects the span reads and writes — what reconstruction must produce. |
+| **Dependency surface** | What the span calls out to (DB, relations, HTTP, filesystem) — the swap candidates. |
+
+A candidate slice is derived statically from an entry (AST-walk what it consumes and calls); the user narrows it (mock this, cut here) or widens it.
+
+### 2.3 Waypoint
+
+A **waypoint** is a user-placed capture point, set like a breakpoint but only legal on a **public method call**. (Constructors are deferred — marginally more reconstruction code for little gain.)
+
+- During a real run, each time execution **crosses** a waypoint, the runner captures `{ receiver, args }` at that call.
+- A waypoint is later a **re-entry point**: pick it, and the tool reconstructs the captured state and re-invokes.
+- Waypoints are sparse and intentional (not "every method") — the UI only *offers* them on valid sites.
+
+### 2.4 Two capabilities, layered
+
+These were conflated as "moving the IP" in the concept doc. They are separate and built in this order:
+
+- **(b) Run-from-arbitrary-state** — the synthesis side. Author state via the mock/swap UI, then invoke. **No recording, no ledger.** This is the tractable, independently valuable core.
+- **(a) Waypoint ledger / timeline** — the recording side. Capture state at each waypoint crossing during a real run, building a scrubbable timeline; pick any point and re-invoke.
+
+(a) is just (b) fed by captured states instead of hand-authored ones — **same invoke machinery**, so the timeline is not a separate risky subsystem. If we ever need to cut scope, (a) drops and (b) remains a useful tool.
+
+### 2.5 State reconstruction — three tiers
+
+Reconstruction emits constructable source for captured state:
+
+| Tier | Examples | Strategy |
+|---|---|---|
+| **1 — Trivial** | scalars, arrays | `var_export` |
+| **2 — Hydratable** | Eloquent models, DTOs, Collections | `newFromBuilder([...])` (exists=true) / `make([...])` (exists=false); `setRelation()` per traversed relation |
+| **3 — Irreproducible** | live PDO handle, open socket, closure over runtime scope, half-constructed service | **Cannot** be written to source. **Detect and refuse gracefully** — mark the waypoint/node "not reproducible" with the reason. |
+
+Tier 1–2 covers essentially all of a CRUD slice's state. Tier 3 is rare in CRUD; the rule is *detect early and degrade with a clear message*, never emit a script that explodes at runtime. The **"reproducible slice" predicate** runs over the slice's live-state surface and gates the operation.
+
+---
+
+## 3. Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  UI  (React + TypeScript, Vite)                              │
+│  • Canvas (file-tree → class diagram → editor, semantic zoom)│
+│  • Monaco editor with gutter waypoints/swaps                 │
+│  • Variables / Console panels (mode-dependent)               │
+│  • Split-screen project browser (iframe + postMessage)       │
+└───────────────▲─────────────────────────────────────────────┘
+                │  JSON-RPC 2.0 over WebSocket  (the adapter contract)
+┌───────────────▼─────────────────────────────────────────────┐
+│  PHP Runner-as-Host  (FrankenPHP worker mode)               │
+│  • Boots & keeps Laravel resident                            │
+│  • AST parse/instrument (nikic/php-parser)                   │
+│  • Capture / reconstruct (ledger primitive)                 │
+│  • Swap resolution (fake | real)                            │
+│  • Serves the entry, drives execution, rolls back           │
+└───────────────┬─────────────────────────────────────────────┘
+                │  service-name or host-mapped ports
+┌───────────────▼─────────────────────────────────────────────┐
+│  Dockerized deps (mysql, redis, …) — left running           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.1 Runner-as-host
+
+The tool **is the runtime**; Laravel is what it executes. One long-lived process (FrankenPHP worker mode) boots Laravel once and holds it resident, so:
+
+- the booted app supplies ambient state for every re-invoke,
+- re-runs are fast (no per-run bootstrap),
+- the framework-state-reset machinery FrankenPHP/Octane already ships is **reused as our waypoint-boundary reset**,
+- instrumentation, swap, capture, and serving live in one process — no cross-process debug wire.
+
+### 3.2 The per-language adapter contract
+
+Most of the system is language-neutral and written once: canvas/UI, docker orchestration, the coordinator, ledger *orchestration* (which waypoint, reconstruct, invoke, rollback). A thin **adapter** per language satisfies a fixed contract:
+
+| Slot | PHP fill |
+|---|---|
+| `parse(source) → structure model` | nikic/php-parser → language-neutral node-kind schema |
+| `instrument(ast, swaps, waypoints) → source` | inject swap RHS + capture hooks, round-trip faithful |
+| `host / run` | FrankenPHP boots app, drives an entry, serves |
+| `capture(waypoint) → blob` / `reconstruct(blob)` | the ledger primitive (§2.5) |
+| `resolve(swap-site) → fake \| real` | the mock dial (§4, §7) |
+| `transport` | invoke / scope / step over the wire |
+
+**Two invariants earn "general":**
+1. The **structure model** both parsers emit into is language-neutral (node-kinds: class / function / module / method — from day one, even though PHP only exercises `class`/`method` at launch).
+2. The **state blob is opaque to the coordinator** — it stores and returns it, never reads inside. The moment it introspects, it stops being general.
+
+**We do not build the full abstraction up front.** Build PHP concretely; extract the interface when the JS adapter forces each seam. Keep only the cheap future-proofing (node-kinds, opaque blobs).
+
+---
+
+## 4. Swap system
+
+### 4.1 The expression hole
+
+A swap site is an **expression hole**, not a typed-value hole. The form emits *code*:
+
+```php
+$user = User::find(1);          // original
+$user = $mockUser;              // swapped — or any expression:
+$user = (new User)->newFromBuilder(['id' => 1, 'email' => '…']);
+$user = fn() => $factory->make();
+```
+
+Mechanics:
+- **AST-based** (nikic/php-parser): locate the assignment/call node, replace its RHS. Sturdier than string matching, and rides the same parse already done for the diagram and capture hooks — **one instrumentation pass, three payloads** (swaps + waypoint hooks + structure model).
+- **Indirection** keeps the source static: `$user = $__swaps['user_1'] ?? User::find(1)`. The UI writes the swap map; the rewritten source doesn't churn per edit.
+
+### 4.2 Auto-highlight "problem code"
+
+Static analysis flags swap candidates in the open file — the same set that breaks isolation/determinism:
+
+- external/non-deterministic calls: query builder & `Model::find/get/first`, `Http::`, `now()`, `Carbon::now()`, `Str::random/uuid`, `rand`, filesystem/`file_*`, `env()`.
+
+These are highlighted in the gutter and inline. The highlight set **is** the "what should I mock?" answer. The user can also highlight anything manually. Highlighting is a *suggester, not a gate*.
+
+### 4.3 Templates
+
+A template pre-fills the hole from a small form:
+
+- **Eloquent model:** `newFromBuilder([...])` (exists=true → later `save()` is UPDATE) or `make([...])` (exists=false → INSERT), with a `setRelation()` slot per relation the span traverses.
+- Starter library: Model, Collection, paginated result, Request.
+
+Templates are editable down to arbitrary code after insertion.
+
+### 4.4 The mock dial has two ends
+
+Same interception point, target swapped per site:
+
+- **Fake:** resolve to a literal / hydrated template.
+- **Real:** fall through to the live dockerized service (a real query against the mysql container).
+
+"Docker-backing" and "data-mocking" are the same dial at different levels — fake *what* it returns vs. point at *where* the dependency lives.
+
+---
+
+## 5. PHP runner internals
+
+### 5.1 Host
+
+- **FrankenPHP worker mode** — single binary (Caddy-based), boots Laravel once, keeps it resident, serves HTTP directly (replaces nginx + php-fpm for the path we drive). Reuses its Octane-style state-reset between runs.
+- Alternatives if FrankenPHP misfits a project: RoadRunner, then Swoole/Octane.
+
+### 5.2 Instrumentation pass
+
+One AST walk (nikic/php-parser, round-trip-faithful printer) produces:
+
+1. the **structure model** for the canvas,
+2. **swap rewrites** at chosen sites,
+3. **capture hooks** at waypoints — `__capture($waypointId, $this, func_get_args())` injected at the entry of each waypoint method.
+
+Line-map preserved so the editor's gutter ticks map back to original source. We rewrite only project source we control; vendor code is not rewritten (capture is at *call sites we own*, i.e., the public-method boundary).
+
+### 5.3 Capture
+
+At a waypoint crossing: deep-copy receiver + args into an **opaque blob** (deep copy via serialize where serializable; tier-3 fields trip the reproducible-slice predicate and mark the waypoint non-reproducible). The blob is stored by the coordinator, never introspected by it.
+
+### 5.4 Reconstruct + invoke
+
+1. Reset framework state to a clean boundary (FrankenPHP/Octane reset).
+2. Emit/evaluate reconstruction source for receiver + args (tier 1–2).
+3. Apply active swaps (fake or real).
+4. `BEGIN` transaction.
+5. `$receiver->method(...$args)`.
+6. Capture result / variables / output.
+7. **Peek** → `ROLLBACK` and snap back. **Destructive** → keep (still rollback-guarded unless explicitly committed).
+
+The booted app supplies container/config/DB ambiently; swaps neutralize the I/O we flagged.
+
+### 5.5 Determinism — reuse the framework, don't build a generic recorder
+
+The concept doc's "record-and-pin non-deterministic reads" generic layer is **not built**. It is subsumed by:
+
+- **Swaps** for flagged I/O / non-deterministic calls (they're already pinned by the replacement).
+- **DB transaction + rollback** for `save()`/writes crossed on replay.
+- Laravel's own pins where convenient: `Carbon::setTestNow()`, `Str::createRandomStringsUsing()`, `Str::createUuidsUsing()`, `Http::fake()`, `Queue/Bus/Event/Mail::fake()`.
+
+Only genuinely residual non-determinism (rare) would justify a targeted record-pin later.
+
+---
+
+## 6. Determinism & safety postures
+
+- **Mock mode:** crossed `->save()` hits a fake; side effects neutralized.
+- **Docker mode:** the save is real against the live mysql container; the **transaction-wrap-and-rollback** guard covers it. "Real DB but don't mutate it" *is* transaction-rollback.
+
+Every re-invoke is rollback-guarded by default. Committing is an explicit, deliberate action.
+
+---
+
+## 7. Docker mode
+
+The runner lifts out of the compose set and runs as the host process while the rest of the stack stays up.
+
+- **Identifying the PHP service** is a heuristic (build context, image, the one running artisan) that misfires on custom setups → **let the user mark it in the UI**. "The PHP service" is often plural (`queue`, `scheduler`, `horizon`); the user chooses which to subsume vs. leave containerized.
+- **Reaching deps:**
+  - *Published ports* — works when the dep publishes one; needs a `DB_HOST → 127.0.0.1` + mapped-port override; fails on internal-only deps.
+  - *Network-join* (default, robust) — run the runner on the compose network (`docker network connect`); reach deps by service name (`mysql:3306`); the app's `.env` stands with near-zero rewrite.
+- **Read-only path:** parse compose, enumerate services, `docker compose up -d <non-runner set>` (pulls `depends_on`), read ports/network, point the runner in — **no mutation of their compose** unless the unpublished-dep case forces network-join.
+- **Self add/remove:** the runner can add/remove itself from a docker setup; the files involved are simple.
+
+---
+
+## 8. UI design
+
+### 8.1 Modes (drive layout)
+
+The window reconfigures by mode:
+
+| Mode | Layout |
+|---|---|
+| **Not running — diagram/code** | Maximum real estate. Canvas or editor full-width. No console/variables panels. |
+| **Running** | **Split screen:** left = code + debug panels, right = live project browser. Bottom = **Variables**. Right-of-variables = **Console** (tabbed). Chrome DevTools Protocol connection surfaced here so PHP-side and browser-side land in one place as execution proceeds. |
+
+Panels (variables, console) appear only when running; not-run mode reclaims the space for the diagram/editor.
+
+### 8.2 Code editor — the part you care about most
+
+- **Monaco**, VS Code-style.
+- **Gutter ticks on the left, by the line number:**
+  - **red** = breakpoint,
+  - **blue** = waypoint (only offered on valid public-method-call lines),
+  - swap sites highlighted inline + a gutter marker.
+- Click the gutter to toggle; invalid waypoint lines simply don't accept a blue tick.
+- Swap sites render inline widgets/decorations showing the active replacement, with an edit affordance opening the expression form / template picker.
+
+### 8.3 Canvas — semantic zoom, locked layout
+
+One canvas, level-of-detail rendering driven by zoom:
+
+- **Far out:** file-structure boxes (folders → files), nested.
+- **Mid:** UML **class boxes** — fields/methods as rows, handles on rows as binding affordances (wire a node to an entry, a swap, a waypoint).
+- **Far in / focused:** the node *becomes* a full Monaco editor zoomed to a property or method.
+
+Details:
+- **Locked layout, not free-floating.** elkjs (layered) computes positions; nodes snap and animate to them. Collapse/expand and **flat-vs-tree** toggles just re-run layout. (Optional manual nudge later; default is locked.)
+- **Editor instances are lazy:** only the focused node mounts a live Monaco; all others render static syntax-highlighted snippets (shiki). Never mount N editors.
+- **Class-diagram waypoints:** a node may expose a waypoint affordance on its **constructor or its first method call** — both acceptable; this is secondary. The **gutter ticks in the code pane are the primary waypoint/swap surface.**
+- **Tabs** across the top for multiple open views (a diagram, a file, a console group).
+
+### 8.4 Project browser (right pane)
+
+- Renders the **real Laravel response** the runner produces — this is what lets the tool test the front end (actual output, not a mock).
+- **iframe + postMessage + injected hydration state** — the isolated option. Separate document/JS context so the app under debug can't corrupt the debugger. Worth the postMessage boundary given the app can be arbitrarily broken mid-debug.
+
+---
+
+## 9. Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| UI framework | **React + TypeScript + Vite** | Ecosystem fit for the canvas + editor; ties the front end together. |
+| Canvas | **@xyflow/react (React Flow)** | Nested nodes/subflows, custom node renderers, zoom store for LOD. |
+| Auto-layout | **elkjs** (layered) | Clean deterministic class-diagram layout; better than dagre for nested containers. |
+| Code editor | **Monaco** | VS Code parity: gutter decorations, inline widgets, line-mapping. |
+| Static highlight (unfocused nodes) | **shiki** | Fast, accurate, no editor weight. |
+| UI state | **Redux Toolkit** | Complex graph/ledger/run state benefits from the action log; its time-travel devtools mirror our own ledger model. (Zustand acceptable if we want less ceremony.) |
+| Wire protocol | **JSON-RPC 2.0 over WebSocket** | Same shape as DBGp/CDP; one wire for PHP now and JS later; defines the adapter contract. |
+| App shell | **Runner serves the Vite-built app as a local web app** | No Electron/Tauri for v1 (a desktop shell reintroduces a third language for marginal gain). Revisit only if deep OS integration is needed. |
+| PHP host | **FrankenPHP worker mode** | Long-lived booted app, direct HTTP, reusable state reset. |
+| PHP AST | **nikic/php-parser** | Round-trip-faithful parse/print; pure PHP; powers swaps + capture + structure model. |
+| Browser/CDP bridge (running mode, JS phase) | **Chrome DevTools Protocol** | Free scope reads, async-stack stitching; surfaced in the console/variables panels. |
+
+---
+
+## 10. JavaScript / TypeScript phase (later)
+
+Captured here so the v1 schema doesn't paint us into a corner.
+
+- **One live IP, fragmented timeline.** CDP gives one synchronous call stack per pause plus a *read-only* async stack trace (reconstructed history, not restorable frames). `await` points are natural, free boundaries.
+- **Capture is the hard slot, not "JS is hard."** At a pause CDP exposes scope for free (`Debugger.paused`, `Runtime.getProperties`, `evaluateOnCallFrame`, `setVariableValue`) — the *read* is free. Turning it into a restorable blob (continuation + pending promise) is the work, and hits the same tier-3 wall (DOM node, socket, closure).
+- **The framework-state escape.** Let the framework feed the browser its own state. Capture moves from VM-execution level (hard) to framework-state level (Redux store / signals graph — already serializable for SSR/HMR). **Redux DevTools already is this ledger.** FE ledger entries become **state-injection, not execution-replay** — dispatch the state, let it re-render. The cross-await replay worry mostly evaporates.
+- **Structure schema** already carries node-kinds (function/module beyond class), so JS slots in without a schema change.
+
+---
+
+## 11. Build order
+
+**Phase 0 — skeleton**
+- FrankenPHP host boots a Laravel app, serves it, split-screen browser pane renders the real response.
+- JSON-RPC/WebSocket channel UI ↔ runner.
+- Monaco open-a-file with gutter click toggles (red/blue ticks, no behavior yet).
+
+**Phase 1 — capability (b): run-from-state (no ledger)**
+- AST parse → structure model → canvas (file-tree → class boxes, locked layout).
+- Auto-highlight problem code; swap form + Eloquent template; AST swap via indirection map.
+- Mock entry: author receiver + args, **reconstruct + invoke** with transaction-rollback. Variables/console panels in running mode.
+- **Deliverable: a useful isolation runner with zero recording.**
+
+**Phase 2 — capability (a): waypoint ledger**
+- Waypoint hooks at public-method calls; capture on crossing during a real run.
+- Reproducible-slice predicate + "not reproducible" UI state.
+- Scrubbable timeline; re-invoke from any waypoint (same Phase-1 machinery).
+
+**Phase 3 — semantic-zoom canvas + docker mode**
+- LOD zoom from file boxes → class diagram → focused Monaco; flat/tree toggle; tabs.
+- Docker network-join, service-marking UI, read-only bring-up path, self add/remove.
+
+**Phase 4 — JS/TS adapter**
+- CDP transport; framework-state ledger (Redux/signals snapshot); extract the adapter interface against the second implementation.
+
+---
+
+## 12. Decisions locked / still open
+
+**Locked:**
+- Re-entry granularity = **public method call** (reconstruct receiver + args + invoke). Constructors deferred.
+- Determinism via swaps + transaction-rollback + Laravel fakes; **no generic record-pin layer**.
+- FrankenPHP host; nikic/php-parser; React + React Flow + elk + Monaco; JSON-RPC/WebSocket; iframe+postMessage browser pane; locked (non-free-floating) layout.
+- Primary waypoint/swap surface = **editor gutter**; class-diagram affordance secondary.
+- Build (b) before (a); polyglot abstraction deferred until JS forces it.
+
+**Open:**
+- **Slice bounding on the canvas** — entry + static-derived surface (auto), vs. explicit draw (node-to-node), vs. both. Drives canvas interaction depth.
+- **Class-diagram waypoint anchor** — constructor vs. first method call (both acceptable; low priority).
+- **UI state lib** — Redux Toolkit (recommended) vs. Zustand.
+- **Destructive-mode commit UX** — how explicit the "actually keep these writes" gesture must be.
+
+---
+
+*Rationale and the longer discussion that produced these decisions live in `debug-tool-design.md`.*

@@ -1,0 +1,17 @@
+# PHP
+/runner/vendor/
+/runner/.phpunit.cache/
+
+# Node / UI
+/ui/node_modules/
+/ui/dist/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Scratch
+/tmp/

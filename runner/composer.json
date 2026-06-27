@@ -1,0 +1,30 @@
+{
+    "name": "waypoint/runner",
+    "description": "PHP runner core for the Waypoint debugger: AST structure extraction, problem scanning, swapping, waypoint instrumentation, and the JSON-RPC server.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.2",
+        "nikic/php-parser": "^5.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Waypoint\\Runner\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Waypoint\\Runner\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "serve": "php -S 127.0.0.1:9777 bin/server.php"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
