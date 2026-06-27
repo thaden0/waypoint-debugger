@@ -12,6 +12,8 @@ use Waypoint\Runner\Module\ModuleFactory;
 use Waypoint\Runner\Module\ModuleRegistry;
 use Waypoint\Runner\Module\OrmProvider;
 use Waypoint\Runner\Module\ProjectConfig;
+use Waypoint\Runner\Workspace\Provisioner;
+use Waypoint\Runner\Workspace\Workspace;
 use Waypoint\Runner\Reconstruct\Invoker;
 use Waypoint\Runner\Run\RequestRunner;
 use Waypoint\Runner\Run\SliceRunner;
@@ -145,10 +147,12 @@ final class MethodRegistry
                     $this->module = ModuleFactory::for($root, getenv('WP_HOST_DRIVER') ?: null);
                     $this->host = $this->module->host();
                 }
+                (new Workspace($this->registry))->add($root); // register / bump recents
                 return [
                     'ok' => true,
                     'projectRoot' => $this->projectRoot,
                     'host' => $this->host?->describe(),
+                    'module' => $this->module?->id(),
                 ];
             },
 
@@ -189,6 +193,27 @@ final class MethodRegistry
                 'detected' => $this->registry->detect($this->projectRoot),
                 'active' => $this->module?->id(),
             ],
+            // Workspace: the user-global known-projects list (~/.waypoint/projects.json)
+            // that backs the header project picker, plus opt-in provisioning detection.
+            'workspace.projects' => fn () => ['projects' => (new Workspace($this->registry))->projects()],
+            'workspace.addProject' => function (array $p) {
+                $entry = (new Workspace($this->registry))->add((string) ($p['path'] ?? ''));
+                if ($entry === null) {
+                    throw new RpcException(-32070, 'not a directory: ' . ($p['path'] ?? ''));
+                }
+                return ['project' => $entry];
+            },
+            'workspace.removeProject' => function (array $p) {
+                (new Workspace($this->registry))->remove((string) ($p['path'] ?? ''));
+                return ['ok' => true];
+            },
+            'project.status' => fn () => (new Provisioner($this->projectRoot))->status(),
+            'project.provision' => function (array $p) {
+                $result = (new Provisioner($this->projectRoot))->provision((string) ($p['action'] ?? ''));
+                $result['status'] = (new Provisioner($this->projectRoot))->status();
+                return $result;
+            },
+
             'project.config.get' => fn () => ['config' => ProjectConfig::read($this->projectRoot)],
             'project.config.save' => function (array $p) {
                 $config = $p['config'] ?? [];

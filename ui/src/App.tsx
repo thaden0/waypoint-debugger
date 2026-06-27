@@ -8,52 +8,10 @@ import { RunControls } from './panels/RunPanel';
 import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
 import { SettingsPanel } from './panels/SettingsPanel';
+import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
-
-function OpenProject() {
-  const runner = useStore((s) => s.runner);
-  const openProject = useStore((s) => s.openProject);
-  const connected = useStore((s) => s.connected);
-  const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  // Default the input to the current project root.
-  useEffect(() => {
-    if (runner?.projectRoot && !value) setValue(runner.projectRoot);
-  }, [runner?.projectRoot]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const open = async () => {
-    if (!value.trim()) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await openProject(value.trim());
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="open-project" title="Absolute path to a project root on the host machine">
-      <span className="open-project__icon">📂</span>
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && open()}
-        placeholder="/path/to/project"
-        spellCheck={false}
-        disabled={!connected}
-      />
-      <button onClick={open} disabled={!connected || busy}>{busy ? '…' : 'Open'}</button>
-      {err && <span className="open-project__err" title={err}>!</span>}
-    </div>
-  );
-}
 
 export default function App() {
   const connect = useStore((s) => s.connect);
@@ -80,6 +38,7 @@ export default function App() {
         await connect();
         if (useStore.getState().connected) {
           await loadTree();
+          await Promise.all([useStore.getState().loadProjects(), useStore.getState().loadStatus()]);
           return;
         }
         await new Promise((r) => setTimeout(r, 500));
@@ -97,7 +56,7 @@ export default function App() {
           <span className="brand__dot" /> Waypoint
         </div>
 
-        <OpenProject />
+        <ProjectPicker />
 
 
         <nav className="view-toggle">
@@ -152,6 +111,7 @@ export default function App() {
         <button className="settings-gear" title="Project settings" disabled={!connected} onClick={() => openSettings()}>⚙</button>
       </header>
 
+      <ProvisioningCard />
       <SettingsPanel />
 
       {view === 'api' ? (

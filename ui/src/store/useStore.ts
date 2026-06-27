@@ -94,6 +94,10 @@ interface State {
   modules: ModulesAvailable | null;
   projectConfig: ProjectConfigShape | null;
   savingSettings: boolean;
+  projects: WorkspaceProject[];
+  projectStatus: ProjectStatus | null;
+  provisioning: string | null;
+  statusDismissed: boolean;
   browserSrc: string | null;
   log: string[];
 
@@ -134,6 +138,24 @@ interface State {
   closeSettings: () => void;
   saveSettings: (config: ProjectConfigShape) => Promise<void>;
   refreshRunner: () => Promise<void>;
+  loadProjects: () => Promise<void>;
+  addProject: (path: string) => Promise<void>;
+  removeProject: (path: string) => Promise<void>;
+  loadStatus: () => Promise<void>;
+  provision: (action: string) => Promise<void>;
+  dismissStatus: () => void;
+}
+
+export interface WorkspaceProject {
+  path: string;
+  name: string;
+  module: string | null;
+  lastOpened: number;
+}
+export interface ProjectStatus {
+  provisioned: boolean;
+  issues: { id: string; label: string; action: string }[];
+  actions: { id: string; label: string }[];
 }
 
 export interface ModulesAvailable {
@@ -216,6 +238,10 @@ export const useStore = create<State>((set, get) => ({
   modules: null,
   projectConfig: null,
   savingSettings: false,
+  projects: [],
+  projectStatus: null,
+  provisioning: null,
+  statusDismissed: false,
   browserSrc: null,
   log: [],
 
@@ -291,6 +317,7 @@ export const useStore = create<State>((set, get) => ({
       mode: 'idle',
     });
     await get().loadTree();
+    await Promise.all([get().loadProjects(), get().loadStatus()]);
   },
 
   openFile: async (path: string) => {
@@ -650,6 +677,44 @@ export const useStore = create<State>((set, get) => ({
       // leave existing runner info in place
     }
   },
+
+  loadProjects: async () => {
+    try {
+      const res = await rpc<{ projects: WorkspaceProject[] }>('workspace.projects');
+      set({ projects: res.projects });
+    } catch { /* ignore */ }
+  },
+
+  addProject: async (path) => {
+    await rpc('workspace.addProject', { path }).catch(() => null);
+    await get().openProject(path);
+  },
+
+  removeProject: async (path) => {
+    await rpc('workspace.removeProject', { path }).catch(() => null);
+    await get().loadProjects();
+  },
+
+  loadStatus: async () => {
+    try {
+      const status = await rpc<ProjectStatus>('project.status');
+      set({ projectStatus: status, statusDismissed: false });
+    } catch { /* ignore */ }
+  },
+
+  provision: async (action) => {
+    set({ provisioning: action });
+    try {
+      const res = await rpc<{ ok: boolean; output?: string; error?: string; status?: ProjectStatus }>('project.provision', { action });
+      get().log.push(`provision ${action}: ${res.ok ? 'ok' : 'failed'}${res.output ? ' — ' + res.output.split('\n')[0] : ''}${res.error ? ' — ' + res.error : ''}`);
+      if (res.status) set({ projectStatus: res.status });
+      if (action === 'docker-up' || action === 'composer-install') await get().refreshRunner();
+    } finally {
+      set({ provisioning: null });
+    }
+  },
+
+  dismissStatus: () => set({ statusDismissed: true }),
 }));
 
 // Dev-only handle: lets you poke the live store from the console (and drives
