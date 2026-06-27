@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { recorder } from '../capture/recorder.js';
@@ -57,7 +57,7 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       language: 'js',
       runtime: `node ${process.version}`,
       projectRoot: root,
-      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'host', 'run', 'invoke', 'cdp', 'docker', 'project'],
+      capabilities: ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'api', 'host', 'run', 'invoke', 'cdp', 'docker', 'project'],
       host: currentHost.describe(),
     }),
 
@@ -85,6 +85,57 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       const orch = Orchestrator.forRoot(root);
       if (!orch) throw rpcError(-32030, 'no compose file in project root');
       return orch.down();
+    },
+
+    // API console. The JS adapter has no booted router yet, so routes() is empty
+    // (a framework introspector — Express/Next/Nest — is future work); external
+    // sends work, and the collection persists to the same .waypoint/api.json.
+    'api.routes': () => ({ routes: [] }),
+    'api.send': async (p: {
+      target?: string;
+      method?: string;
+      url?: string;
+      query?: Record<string, string>;
+      headers?: Record<string, string>;
+      body?: string;
+    }) => {
+      if ((p.target ?? 'inprocess') !== 'external') {
+        return { ok: false, captured: false, error: 'in-process capture is not supported by the JS adapter yet — use target=external' };
+      }
+      let url = p.url ?? '';
+      if (!url) return { ok: false, captured: false, error: 'external send requires a url' };
+      if (p.query && Object.keys(p.query).length) {
+        url += (url.includes('?') ? '&' : '?') + new URLSearchParams(p.query).toString();
+      }
+      const start = Date.now();
+      try {
+        const res = await fetch(url, {
+          method: (p.method ?? 'GET').toUpperCase(),
+          headers: p.headers ?? {},
+          body: p.body != null && p.body !== '' ? p.body : undefined,
+        });
+        const text = await res.text();
+        const headers: Record<string, string> = {};
+        res.headers.forEach((v, k) => (headers[k] = v));
+        return {
+          ok: true,
+          captured: false,
+          response: {
+            status: res.status,
+            headers,
+            body: text,
+            contentType: res.headers.get('content-type') ?? 'text/plain',
+            durationMs: Date.now() - start,
+          },
+        };
+      } catch (e) {
+        return { ok: false, captured: false, error: `external request failed: ${(e as Error).message}` };
+      }
+    },
+    'api.collection.load': () => ({ collection: loadCollection(root) }),
+    'api.collection.save': (p: { collection?: unknown }) => {
+      saveCollection(root, p.collection ?? {});
+      return { ok: true };
     },
 
     'fs.read': (p: { path: string }) => ({ path: p.path, source: read(p.path) }),
@@ -177,6 +228,27 @@ export function buildMethods(projectRoot: string, host: Host): Record<string, Me
       return { ok: true };
     },
   };
+}
+
+interface ApiCollection {
+  requests: unknown[];
+  environments: unknown[];
+  activeEnv: string | null;
+}
+function loadCollection(root: string): ApiCollection {
+  const def: ApiCollection = { requests: [], environments: [], activeEnv: null };
+  const file = path.join(root, '.waypoint', 'api.json');
+  if (!existsSync(file)) return def;
+  try {
+    return { ...def, ...(JSON.parse(readFileSync(file, 'utf8')) as Partial<ApiCollection>) };
+  } catch {
+    return def;
+  }
+}
+function saveCollection(root: string, collection: unknown): void {
+  const dir = path.join(root, '.waypoint');
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'api.json'), JSON.stringify(collection, null, 2));
 }
 
 async function listSources(base: string): Promise<string[]> {

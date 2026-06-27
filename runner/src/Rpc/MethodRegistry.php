@@ -61,7 +61,7 @@ final class MethodRegistry
                 'phpVersion' => PHP_VERSION,
                 'projectRoot' => $this->projectRoot,
                 'capabilities' => array_merge(
-                    ['structure', 'scan', 'swap', 'waypoint', 'ledger'],
+                    ['structure', 'scan', 'swap', 'waypoint', 'ledger', 'api'],
                     $this->host !== null ? ['host', 'run', 'invoke'] : []
                 ),
                 'host' => $this->host?->describe(),
@@ -144,6 +144,14 @@ final class MethodRegistry
                 }
                 return $orch->down();
             },
+
+            // API console persistence: saved requests + environments live in the
+            // project app-file (.waypoint/api.json) so a team can share them.
+            'api.collection.load' => fn () => ['collection' => $this->loadCollection()],
+            'api.collection.save' => function (array $p) {
+                $this->saveCollection($p['collection'] ?? []);
+                return ['ok' => true];
+            },
         ];
 
         if ($this->manageHost) {
@@ -214,6 +222,58 @@ final class MethodRegistry
                 $p['uri'] ?? '/',
                 $p['params'] ?? []
             ),
+
+            // API console: introspect the booted router into an auto-collection.
+            'api.routes' => fn () => ['routes' => $this->requireHost()->routes()],
+
+            // API console: send a request. Two targets — in-process through the
+            // instrumented kernel (capture for free, fills the ledger), or a plain
+            // external HTTP call run server-side (no CORS, no capture).
+            'api.send' => function (array $p) {
+                $target = $p['target'] ?? 'inprocess';
+                $method = strtoupper($p['method'] ?? 'GET');
+                $query = $p['query'] ?? [];
+                $headers = $p['headers'] ?? [];
+                $body = $p['body'] ?? null;
+
+                if ($target === 'external') {
+                    return $this->externalSend($method, (string) ($p['url'] ?? ''), $query, $headers, is_string($body) ? $body : null);
+                }
+
+                // In-process: drive a whole instrumented request so placed
+                // waypoints/breakpoints fire. Bake the query onto the path; the
+                // raw body + headers ride in options.
+                $path = '/' . ltrim((string) ($p['uri'] ?? '/'), '/');
+                if ($query !== []) {
+                    $path .= (str_contains($path, '?') ? '&' : '?') . http_build_query($query);
+                }
+                $runner = new RequestRunner(dirname(__DIR__, 2));
+                $config = [
+                    'projectRoot' => $this->projectRoot,
+                    'driver' => $p['driver'] ?? $this->host?->describe()['driver'],
+                    'psr4' => $p['psr4'] ?? [],
+                    'targets' => $p['targets'] ?? [],
+                    'breakpointMode' => 'trace',
+                    'entry' => [
+                        'kind' => 'http',
+                        'method' => $method,
+                        'uri' => $path,
+                        'params' => [],
+                        'options' => [
+                            'headers' => $headers,
+                            'body' => is_string($body) ? $body : null,
+                            'contentType' => $p['contentType'] ?? null,
+                            'cookies' => $p['cookies'] ?? [],
+                        ],
+                    ],
+                ];
+                Recorder::reset();
+                $out = $runner->run($config, static function (string $m, array $params): void {
+                    Notifier::notify($m, $params); // ledger.captured + breakpoint.hit stream live
+                });
+                $out['captured'] = true;
+                return $out;
+            },
 
             // Drive a slice: instrument (waypoints + swaps), load, run the entry,
             // populate the ledger. Captures stream over the Notifier as they happen.
@@ -304,6 +364,103 @@ final class MethodRegistry
         }
         sort($paths);
         return ['root' => $base, 'paths' => $paths];
+    }
+
+    /** Path to the project app-file holding the API console collection. */
+    private function waypointFile(string $name): string
+    {
+        return $this->projectRoot . '/.waypoint/' . $name;
+    }
+
+    /** @return array<string,mixed> */
+    private function loadCollection(): array
+    {
+        $default = ['requests' => [], 'environments' => [], 'activeEnv' => null];
+        $file = $this->waypointFile('api.json');
+        if (!is_file($file)) {
+            return $default;
+        }
+        $data = json_decode((string) @file_get_contents($file), true);
+        return is_array($data) ? $data + $default : $default;
+    }
+
+    /** @param array<string,mixed> $collection */
+    private function saveCollection(array $collection): void
+    {
+        $dir = $this->projectRoot . '/.waypoint';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RpcException(-32050, 'cannot create .waypoint directory');
+        }
+        if (@file_put_contents($this->waypointFile('api.json'), json_encode($collection, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
+            throw new RpcException(-32051, 'cannot write .waypoint/api.json');
+        }
+    }
+
+    /**
+     * Plain external HTTP call, run server-side (no CORS). No instrumentation —
+     * this is the "just hit my running dev server" target.
+     *
+     * @param array<string,mixed> $query
+     * @param array<string,string> $headers
+     * @return array{ok:bool,captured:bool,response?:array,error?:string}
+     */
+    private function externalSend(string $method, string $url, array $query, array $headers, ?string $body): array
+    {
+        if ($url === '') {
+            throw new RpcException(-32052, 'external send requires a url');
+        }
+        if ($query !== []) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
+        }
+        $headerLines = [];
+        foreach ($headers as $name => $value) {
+            $headerLines[] = $name . ': ' . $value;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_HTTPHEADER => $headerLines,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        if ($body !== null && $body !== '') {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        }
+
+        $start = microtime(true);
+        $raw = curl_exec($ch);
+        $durationMs = round((microtime(true) - $start) * 1000, 2);
+        if ($raw === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            return ['ok' => false, 'captured' => false, 'error' => "external request failed: {$err}"];
+        }
+
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $contentType = (string) (curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: 'text/plain');
+        curl_close($ch);
+
+        $rawHeaders = substr((string) $raw, 0, $headerSize);
+        $responseBody = substr((string) $raw, $headerSize);
+        $respHeaders = [];
+        foreach (explode("\r\n", trim($rawHeaders)) as $line) {
+            if (str_contains($line, ':')) {
+                [$n, $v] = explode(':', $line, 2);
+                $respHeaders[trim($n)] = trim($v);
+            }
+        }
+
+        return ['ok' => true, 'captured' => false, 'response' => [
+            'status' => $status,
+            'headers' => $respHeaders,
+            'body' => $responseBody,
+            'contentType' => $contentType,
+            'durationMs' => $durationMs,
+        ]];
     }
 
     private function readProjectFile(string $path): string

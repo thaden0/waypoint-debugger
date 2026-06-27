@@ -46,7 +46,12 @@ final class BareHost implements HostInterface
         $this->txLog = [];
     }
 
-    public function renderEntry(string $method, string $uri, array $params = []): array
+    public function routes(): array
+    {
+        return []; // no router in bare mode
+    }
+
+    public function renderEntry(string $method, string $uri, array $params = [], array $options = []): array
     {
         $body = "<!doctype html><html><body style=\"font-family:system-ui;padding:24px;color:#0f172a\">"
             . "<h2>Bare host</h2>"

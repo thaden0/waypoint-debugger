@@ -31,11 +31,22 @@ interface HostInterface
     public function resetState(): void;
 
     /**
-     * Drive an entry and render the real response for the project-browser pane.
+     * Drive an entry and render the real response for the project-browser pane
+     * and the API console. $options carries a faithful request beyond the query
+     * params: ['headers'=>[name=>value], 'body'=>string, 'contentType'=>string,
+     * 'cookies'=>[name=>value]]. The response includes real headers + duration.
      *
-     * @return array{status:int,headers:array<string,string>,body:string,contentType:string}
+     * @return array{status:int,headers:array<string,string>,body:string,contentType:string,durationMs?:float}
      */
-    public function renderEntry(string $method, string $uri, array $params = []): array;
+    public function renderEntry(string $method, string $uri, array $params = [], array $options = []): array;
+
+    /**
+     * Introspect the application's HTTP routes from the booted router, for the
+     * API console's auto-collection. Returns [] for hosts with no router (bare/JS).
+     *
+     * @return array<int,array{methods:array<int,string>,uri:string,name:?string,action:string,middleware:array<int,string>,params:array<int,string>}>
+     */
+    public function routes(): array;
 
     /**
      * Transaction guard hooks for the Invoker. With a real DB they map to

@@ -80,7 +80,12 @@ try {
     if (($entry['kind'] ?? 'http') === 'call') {
         $result = runCall($host, $entry);
     } else {
-        $response = $host->renderEntry($entry['method'] ?? 'GET', $entry['uri'] ?? '/', $entry['params'] ?? []);
+        $response = $host->renderEntry(
+            $entry['method'] ?? 'GET',
+            $entry['uri'] ?? '/',
+            $entry['params'] ?? [],
+            $entry['options'] ?? []
+        );
         $result = ['ok' => true, 'response' => $response];
     }
 

@@ -80,25 +80,95 @@ final class LaravelHost implements HostInterface
         }
     }
 
-    public function renderEntry(string $method, string $uri, array $params = []): array
+    public function routes(): array
+    {
+        $this->boot();
+        $router = $this->app?->make('router');
+        if ($router === null) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($router->getRoutes() as $route) {
+            $methods = array_values(array_filter(
+                $route->methods(),
+                static fn (string $m): bool => $m !== 'HEAD'
+            ));
+            $action = $route->getActionName();
+            $out[] = [
+                'methods' => $methods,
+                'uri' => '/' . ltrim($route->uri(), '/'),
+                'name' => $route->getName(),
+                'action' => is_string($action) ? $action : 'Closure',
+                'middleware' => array_values(array_unique($route->gatherMiddleware())),
+                'params' => array_values($route->parameterNames()),
+            ];
+        }
+        // Stable order: by URI then primary method.
+        usort($out, static fn (array $a, array $b): int => [$a['uri'], $a['methods'][0] ?? ''] <=> [$b['uri'], $b['methods'][0] ?? '']);
+        return $out;
+    }
+
+    public function renderEntry(string $method, string $uri, array $params = [], array $options = []): array
     {
         $this->boot();
 
-        $requestClass = 'Illuminate\\Http\\Request';
-        $request = $requestClass::create($uri, strtoupper($method), $params);
+        $method = strtoupper($method);
+        $headers = $options['headers'] ?? [];
+        $body = $options['body'] ?? null;
+        $cookies = $options['cookies'] ?? [];
 
+        // Translate headers into the $_SERVER convention Symfony's Request expects
+        // (HTTP_*, plus the special CONTENT_TYPE / CONTENT_LENGTH).
+        $server = [];
+        foreach ($headers as $hName => $hValue) {
+            $key = strtoupper(str_replace('-', '_', (string) $hName));
+            if ($key === 'CONTENT_TYPE' || $key === 'CONTENT_LENGTH') {
+                $server[$key] = $hValue;
+            } else {
+                $server['HTTP_' . $key] = $hValue;
+            }
+        }
+
+        $requestClass = 'Illuminate\\Http\\Request';
+        // For bodied methods, $params seeds the request body; otherwise the query.
+        $request = $requestClass::create(
+            $uri,
+            $method,
+            $params,
+            $cookies,
+            [],
+            $server,
+            is_string($body) ? $body : null
+        );
+
+        $start = microtime(true);
         /** @var object $response */
         $response = $this->kernel->handle($request);
-        $body = (string) $response->getContent();
+        $durationMs = (microtime(true) - $start) * 1000;
+
+        $bodyOut = (string) $response->getContent();
         $status = (int) $response->getStatusCode();
         $contentType = (string) $response->headers->get('Content-Type', 'text/html');
+
+        // Flatten the real response headers (last value wins per name).
+        $respHeaders = [];
+        foreach ($response->headers->all() as $hName => $values) {
+            $respHeaders[$hName] = is_array($values) ? (string) end($values) : (string) $values;
+        }
 
         if (method_exists($this->kernel, 'terminate')) {
             $this->kernel->terminate($request, $response);
         }
         $this->resetState();
 
-        return ['status' => $status, 'headers' => [], 'body' => $body, 'contentType' => $contentType];
+        return [
+            'status' => $status,
+            'headers' => $respHeaders,
+            'body' => $bodyOut,
+            'contentType' => $contentType,
+            'durationMs' => round($durationMs, 2),
+        ];
     }
 
     public function transactionHooks(): array
