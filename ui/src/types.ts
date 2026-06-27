@@ -161,5 +161,5 @@ export interface InvokeResult {
 }
 
 export type Mode = 'idle' | 'running';
-export type View = 'canvas' | 'code' | 'api';
+export type View = 'canvas' | 'code' | 'api' | 'data';
 export type Transport = 'ws' | 'http' | 'none';

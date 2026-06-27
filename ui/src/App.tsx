@@ -6,6 +6,7 @@ import { Explorer } from './panels/Explorer';
 import { SwapPanel } from './panels/SwapPanel';
 import { RunControls } from './panels/RunPanel';
 import { ApiConsole } from './panels/ApiConsole';
+import { OrmConsole } from './panels/OrmConsole';
 import { BrowserPane, ConsolePanel, VariablesPanel } from './panels/RunPanels';
 import type { MarkerKind } from './types';
 import './styles.css';
@@ -107,6 +108,9 @@ export default function App() {
           <button className={view === 'api' ? 'is-active' : ''} onClick={() => setView('api')}>
             API
           </button>
+          <button className={view === 'data' ? 'is-active' : ''} onClick={() => setView('data')}>
+            Data
+          </button>
         </nav>
 
         {view === 'code' && openPath && (
@@ -147,6 +151,10 @@ export default function App() {
       {view === 'api' ? (
         <div className="workbench workbench--api">
           <ApiConsole />
+        </div>
+      ) : view === 'data' ? (
+        <div className="workbench workbench--api">
+          <OrmConsole />
         </div>
       ) : (
       <div className="workbench">
