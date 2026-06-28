@@ -8,7 +8,8 @@
 //   node waypoint.mjs up [--project PATH]    install (if needed) + start everything
 //   node waypoint.mjs up --build             serve a production UI build instead of dev
 //
-// Flags: --project <path>  --ws-port N  --http-port N  --ui-port N  --build  --no-open  --force
+// Flags: --project <path>  --ws-port N  --http-port N  --ui-port N  --pty-port N
+//        --no-terminal  --build  --no-open  --force
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -24,7 +25,7 @@ const PHP_MIN = [8, 2];
 // ---- tiny ANSI helpers (respect NO_COLOR) -------------------------------------
 const useColor = !process.env.NO_COLOR && process.stdout.isTTY;
 const c = (n) => (s) => (useColor ? `\x1b[${n}m${s}\x1b[0m` : String(s));
-const bold = c(1), dim = c(2), red = c(31), green = c(32), yellow = c(33), cyan = c(36), magenta = c(35);
+const bold = c(1), dim = c(2), red = c(31), green = c(32), yellow = c(33), blue = c(34), cyan = c(36), magenta = c(35);
 const ok = (s) => console.log(`${green('✓')} ${s}`);
 const warn = (s) => console.log(`${yellow('!')} ${s}`);
 const err = (s) => console.error(`${red('✗')} ${s}`);
@@ -243,6 +244,17 @@ async function up(flags, positional) {
     info(`frontend  ${feLang.id} (${feLang.role}) → ws://127.0.0.1:${fePort}`);
     spawnTagged('fe', yellow, feLang.runner.cmd[0], feLang.runner.cmd.slice(1), {
       env: { ...process.env, PROJECT_ROOT: project, [feLang.runner.wsPortEnv || 'WP_WS_PORT']: fePort },
+    });
+  }
+
+  // Integrated terminal — a standalone PTY WebSocket server (bash) for the
+  // code-view terminal. Independent of the language runners. Skip with --no-terminal.
+  const ptyPort = String(flags['pty-port'] || 9790);
+  if (flags.terminal !== false && flags['no-terminal'] === undefined) {
+    info(`terminal  ws://127.0.0.1:${ptyPort}`);
+    spawnTagged('term', blue, 'npm', ['run', 'terminal'], {
+      cwd: path.join(ROOT, 'runner-js'),
+      env: { ...process.env, PROJECT_ROOT: project, WAYPOINT_PTY_PORT: ptyPort },
     });
   }
 

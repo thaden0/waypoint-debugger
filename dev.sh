@@ -11,6 +11,10 @@ if [ ! -d "$ROOT/runner/vendor" ]; then
   echo "Installing runner deps..."
   (cd "$ROOT/runner" && composer install)
 fi
+if [ ! -d "$ROOT/runner-js/node_modules" ]; then
+  echo "Installing JS adapter deps..."
+  (cd "$ROOT/runner-js" && npm install)
+fi
 if [ ! -d "$ROOT/ui/node_modules" ]; then
   echo "Installing UI deps..."
   (cd "$ROOT/ui" && npm install)
@@ -26,7 +30,12 @@ HOST_PID=$!
 PROJECT_ROOT="$PROJECT_ROOT" php -S 127.0.0.1:9777 "$ROOT/runner/bin/server.php" >/tmp/waypoint-runner.log 2>&1 &
 RUNNER_PID=$!
 
-trap 'kill $HOST_PID $RUNNER_PID 2>/dev/null || true' EXIT
+# Integrated terminal: standalone PTY WebSocket server (bash) for the code view.
+echo "Terminal → ws://127.0.0.1:9790"
+PROJECT_ROOT="$PROJECT_ROOT" WAYPOINT_PTY_PORT=9790 npm --prefix "$ROOT/runner-js" run terminal >/tmp/waypoint-pty.log 2>&1 &
+PTY_PID=$!
+
+trap 'kill $HOST_PID $RUNNER_PID $PTY_PID 2>/dev/null || true' EXIT
 
 echo "UI → http://localhost:5180"
 (cd "$ROOT/ui" && npm run dev)
