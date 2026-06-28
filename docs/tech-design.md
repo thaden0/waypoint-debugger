@@ -522,26 +522,45 @@ language adapters, framework-specific route introspectors, community plugins), a
 - Deferred; noted here for shape so we don't preclude it (keep adapters cleanly
   package-shaped, keep settings serializable).
 
-### 14.4 In-project probe (error-triggered state + logs) — NEEDS DISCUSSION
+### 14.4 In-project probe (error-triggered) — decisions locked, slice 1 built
 
-The tool inserts a **probe** into the project (a service provider / middleware /
-exception hook) that connects back to Waypoint and, on a detected error, sends the
-request context, relevant state, recent queries, and logs.
+A Composer package (`waypoint/probe`, Packagist-bound; `probe/`) installed in the
+project that **buffers errors/log events** and exposes an authenticated endpoint the
+Waypoint tool reaches into. **Dev-or-prod**, prod-safe by construction.
 
-- **"State before the error" — the practical version:** continuous whole-app
-  checkpointing is too expensive, but we already capture at **waypoint boundaries**.
-  So keep a small **ring buffer of recent waypoint captures in-app** and, on an
-  exception, flush *the last captures before the error* + the error context. The
-  probe is essentially the always-on, error-triggered form of our on-demand ledger —
-  it reuses Recorder/the capture tier system.
-- **Transport:** probe dials out to the Waypoint host (or pushes over the existing
-  WS), so it works even when the runner isn't the one serving the request.
-- **Self add/remove + safety:** like the docker-runner stanza, the probe is
-  installed/removed by the tool; it must be guarded so it never ships to prod
-  unguarded (env-gated, explicit opt-in), and scoped in what state it captures.
-- **Open questions to settle first:** error-detection hook surface (exception
-  handler vs. a wrapper), what state is in-scope to capture (and PII/security),
-  push vs. pull, and how the ring-buffer depth trades memory for history.
+**Locked decisions:**
+- **Pull, not push.** The probe exposes an endpoint and **buffers locally**; the tool
+  *pulls* when the dev starts work (and *pushes config* — same endpoint is
+  bidirectional). Better than push for prod (locked-down prod can't dial out; the dev
+  reaches in across a VPN/tunnel).
+- **Prod-safe = a bounded ring buffer.** `max` records + `ttl`, evicting oldest →
+  appending is cheap, storage capped, **no pre-emptive state saving in prod** (that's
+  what would cause the "crawl"). Heavy per-waypoint state saving is dev-only and
+  remotely toggled off by default.
+- **Buffer store:** the app's **cache** (Redis/DB/file — so one pull spans workers),
+  with a **file** fallback (always available).
+- **Auth:** timing-safe **shared secret** (+ optional IP allowlist); **fail-closed**
+  (off unless `enabled` AND a secret). The tool manages the secret.
+- **Capture point:** an **ExceptionHandler decorator** (reliable — the routing
+  pipeline hides exceptions from middleware) records the failing request (redacted) +
+  the exception; plus log events at/above a level (deduped). **PII:** recursive
+  redaction of `password/token/authorization/secret/…`.
+- **State before the error → replay, not continuous capture.** The probe records the
+  *failing request*; the Waypoint tool re-runs it through the **instrumented host**
+  (the §18 trace-through-host) to reconstruct the trace — heavy work on the dev's
+  machine, not in prod. (Ring-buffer of actual pre-error captures stays a dev option
+  for non-deterministic bugs.)
+
+**Built (slice 1):** the package — fail-closed arming, bounded cache/file buffer,
+redacting recorder, exception+log capture, authenticated bidirectional pull/config
+endpoint. Validated E2E (install + `artisan serve`): 401 without the secret,
+structured exception capture with the request, redaction, config round-trip;
+framework-free core unit-tested in CI.
+
+**Remaining (slice 2):** tool side — `probe.pull`/`probe.config` RPC (host-side HTTP
+to the endpoint), install + secret management, a Probe UI listing pulled records with
+**trace-through-host** on each error; then the dev ring-buffer state saves on trigger
+events.
 
 ### 14.5 Outbound HTTP mock (boundary-level), distinct from swaps
 
