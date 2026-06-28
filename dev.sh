@@ -30,12 +30,14 @@ HOST_PID=$!
 PROJECT_ROOT="$PROJECT_ROOT" php -S 127.0.0.1:9777 "$ROOT/runner/bin/server.php" >/tmp/waypoint-runner.log 2>&1 &
 RUNNER_PID=$!
 
-# Integrated terminal: standalone PTY WebSocket server (bash) for the code view.
-echo "Terminal → ws://127.0.0.1:9790"
-PROJECT_ROOT="$PROJECT_ROOT" WAYPOINT_PTY_PORT=9790 npm --prefix "$ROOT/runner-js" run terminal >/tmp/waypoint-pty.log 2>&1 &
-PTY_PID=$!
+# Integrated terminal (bash PTY) — opt-in. Enable with WAYPOINT_TERMINAL=1.
+if [ "${WAYPOINT_TERMINAL:-}" = "1" ]; then
+  echo "Terminal → ws://127.0.0.1:9790"
+  PROJECT_ROOT="$PROJECT_ROOT" WAYPOINT_PTY_PORT=9790 npm --prefix "$ROOT/runner-js" run terminal >/tmp/waypoint-pty.log 2>&1 &
+  PTY_PID=$!
+fi
 
-trap 'kill $HOST_PID $RUNNER_PID $PTY_PID 2>/dev/null || true' EXIT
+trap 'kill $HOST_PID $RUNNER_PID ${PTY_PID:-} 2>/dev/null || true' EXIT
 
 echo "UI → http://localhost:5180"
 (cd "$ROOT/ui" && npm run dev)

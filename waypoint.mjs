@@ -247,10 +247,12 @@ async function up(flags, positional) {
     });
   }
 
-  // Integrated terminal — a standalone PTY WebSocket server (bash) for the
-  // code-view terminal. Independent of the language runners. Skip with --no-terminal.
+  // Integrated terminal — a standalone PTY (bash) server for the code-view
+  // terminal. OFF by default: a web-reachable shell is opt-in (pass --terminal).
+  // Even when running, bash is only spawned when you open the terminal panel —
+  // never at startup.
   const ptyPort = String(flags['pty-port'] || 9790);
-  if (flags.terminal !== false && flags['no-terminal'] === undefined) {
+  if (flags.terminal) {
     info(`terminal  ws://127.0.0.1:${ptyPort}`);
     spawnTagged('term', blue, 'npm', ['run', 'terminal'], {
       cwd: path.join(ROOT, 'runner-js'),
@@ -295,7 +297,7 @@ ${bold('Flags')}
   --language ID     backend language module   ${dim('(default: php; see `modules`)')}
   --frontend [ID]   also run a frontend runner on ws+1   ${dim('(auto when package.json present)')}
   --no-frontend     don't start a frontend runner
-  --no-terminal     don't start the PTY terminal server
+  --terminal        start the integrated bash terminal (off by default)
   --build           serve a production UI build instead of the dev server
   --no-open         don't open the browser
   --force           reinstall dependencies even if present

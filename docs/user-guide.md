@@ -74,7 +74,7 @@ If you run `up` with no `--project`, it opens a small **bundled sample project**
 | `--language ID` | `php` | Backend language (`php` or `js`). |
 | `--frontend [ID]` | auto | Also start a front-end runner (automatic when the project has a `package.json`). |
 | `--no-frontend` | — | Never start the front-end runner. |
-| `--no-terminal` | — | Don't start the integrated terminal server. |
+| `--terminal` | off | Start the integrated bash terminal server (opt-in; a web-reachable shell is off by default). |
 | `--build` | dev server | Serve a production build of the UI instead of the dev server. |
 | `--no-open` | opens browser | Don't auto-open the browser. |
 | `--force` | — | Reinstall dependencies even if already present. |
@@ -208,11 +208,19 @@ The editor also highlights **side-effect calls** (database, time, randomness, HT
 
 Click **Terminal** in the top bar to open a real bash terminal docked at the bottom of the Code view, already in your project's directory. Close it with the **×** in its bar, or the Terminal button again.
 
-The terminal is started automatically by the launcher. If you started Waypoint another way and the terminal shows “no terminal server,” start it with:
+The terminal server is **off by default** — a web-reachable shell is opt-in. Start it by launching with `--terminal`:
+
+```bash
+node waypoint.mjs up --project /path/to/app --terminal
+```
+
+or run the server directly:
 
 ```bash
 npm --prefix runner-js run terminal
 ```
+
+`bash` is only spawned when you actually open the terminal panel — never at startup, and never automatically.
 
 ---
 
@@ -572,7 +580,7 @@ A per-machine list of known projects lives in `~/.waypoint/projects.json`.
 | `9778` | Backend (control plane, WebSocket) |
 | `9779` | Front-end engine (control plane), when running |
 | `9777` | Backend analysis-only fallback (HTTP) |
-| `9790` | Terminal server |
+| `9790` | Terminal server (only when started with `--terminal`) |
 
 ---
 
