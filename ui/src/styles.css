@@ -1142,3 +1142,15 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .search-match:hover { background: var(--bg-2); }
 .search-match__ln { color: var(--muted); min-width: 34px; text-align: right; flex: 0 0 auto; }
 .search-match__text { color: var(--text); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Terminal dock (bash, xterm.js) ───────────────────────────────────────── */
+.codestack { display: flex; flex-direction: column; height: 100%; }
+.codestack__editor { flex: 1; min-height: 0; }
+.codestack__term { height: 240px; flex: 0 0 240px; display: flex; flex-direction: column; border-top: 1px solid var(--line-strong); background: #0c0c0d; }
+.codestack__term-bar { display: flex; align-items: center; justify-content: space-between; height: 24px; padding: 0 10px; background: var(--bg-1); border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.codestack__term-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-family: ui-monospace, monospace; }
+.codestack__term-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; }
+.codestack__term-close:hover { color: var(--text); }
+.terminal { flex: 1; min-height: 0; width: 100%; padding: 4px 4px 4px 8px; }
+.terminal .xterm, .terminal .xterm-viewport { height: 100% !important; }
+.term-toggle { font-family: ui-monospace, monospace; }

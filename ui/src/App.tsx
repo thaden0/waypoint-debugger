@@ -10,6 +10,7 @@ import { OrmConsole } from './panels/OrmConsole';
 import { ProbePanel } from './panels/ProbePanel';
 import { RoutesPanel } from './panels/RoutesPanel';
 import { SearchPanel } from './panels/SearchPanel';
+import { TerminalPanel } from './panels/TerminalPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane } from './panels/RunPanels';
@@ -33,6 +34,7 @@ export default function App() {
   const runnersList = useStore((s) => s.runners);
 
   const [placing, setPlacing] = useState<MarkerKind>('breakpoint');
+  const [terminalOpen, setTerminalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +104,14 @@ export default function App() {
 
         <div className="spacer" />
 
+        <button
+          className={'term-toggle' + (terminalOpen ? ' is-active' : '')}
+          title="Toggle bash terminal"
+          onClick={() => { setTerminalOpen((v) => !v); if (view !== 'code') setView('code'); }}
+        >
+          ▸_ Terminal
+        </button>
+
         <div className="run-controls">
           {mode === 'idle' ? (
             <button className="run-btn" onClick={() => setMode('running')} disabled={!connected}>
@@ -170,7 +180,22 @@ export default function App() {
         <main className={'stage ' + (mode === 'running' ? 'stage--split' : '')}>
           <section className="stage__primary">
             <div className="stage__main">
-              {view === 'canvas' ? <Navigator /> : <CodeEditor placing={placing} />}
+              {view === 'canvas' ? (
+                <Navigator />
+              ) : (
+                <div className="codestack">
+                  <div className="codestack__editor"><CodeEditor placing={placing} /></div>
+                  {terminalOpen && (
+                    <div className="codestack__term">
+                      <div className="codestack__term-bar">
+                        <span className="codestack__term-title">bash · {runner?.projectRoot?.split('/').pop() ?? 'project'}</span>
+                        <button className="codestack__term-close" title="Close terminal" onClick={() => setTerminalOpen(false)}>✕</button>
+                      </div>
+                      <TerminalPanel />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bottom dock — in running mode, or whenever a frontend runner is
