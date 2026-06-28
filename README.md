@@ -25,8 +25,8 @@ whole run wrapped in a transaction that rolls back by default.
 > **non-source/image** viewing, a generated **Routes** view (with a Docker
 > introspection fallback), project-wide **search & replace**, an integrated **bash
 > terminal**, an **in-project probe**, and **persisted markers + named, replayable
-> sessions**. See **[docs/product.md](docs/product.md)** for the full feature
-> description and [docs/tech-design.md](docs/tech-design.md) for the design.
+> sessions**. See the **[User Guide](docs/user-guide.md)** for how to use every
+> feature, and [docs/tech-design.md](docs/tech-design.md) for the design.
 
 ---
 
@@ -152,7 +152,7 @@ ledger fill live, and replay any captured waypoint.
 | `ui/src/nav` | the keyboard-driven code navigator (xyflow + React Aria) |
 | `ui/src/panels` | editor, Routes, Search, API/Data consoles, Probe, Sessions, Terminal |
 | `waypoint.mjs` | one-file cross-platform launcher (`doctor` / `install` / `up`) |
-| `docs/product.md` | **full product & feature description** |
+| `docs/user-guide.md` | **the user guide — how to use every feature** |
 | `docs/tech-design.md` | the implementation-facing design + decision record |
 
 ---
