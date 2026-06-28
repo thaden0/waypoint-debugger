@@ -565,9 +565,14 @@ request via `api.send` with placed waypoints, linking the BE waypoint trace — 
 from a remote env). Validated E2E: pulled a captured `GET /boom` exception and traced it
 to `TaskService::summary`.
 
-**Remaining (slice 2b):** the dev **ring-buffer state saves** — on a configured trigger
-event, capture richer per-waypoint state in-app (heavy, dev-only, toggled remotely) for
-non-deterministic bugs replay can't reproduce.
+**Built (slice 2b):** the dev **ring-buffer state saves**, realized as **breadcrumbs**.
+When the ring buffer is toggled on (remotely), the probe accumulates recent DB queries
+(sql + timing + binding *count*, not values — PII) and log events per request and
+attaches them to an error record on a trigger match — the practical "state before the
+error" without instrumenting the live app. **Off by default → zero overhead** (no
+`DB::listen` registered); the toggle takes effect without redeploy (cache config over
+file). Validated E2E: a triggered error carried its 3 breadcrumbs (two queries + a log)
+through pull; off → none. **§14.4 complete (slices 1, 2, 2b).**
 
 ### 14.5 Outbound HTTP mock (boundary-level), distinct from swaps
 
