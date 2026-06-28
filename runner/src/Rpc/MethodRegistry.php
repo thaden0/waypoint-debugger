@@ -101,6 +101,8 @@ final class MethodRegistry
             'fs.list' => fn (array $p) => $this->fsList($p['glob'] ?? '**/*.php'),
             'fs.files' => fn () => $this->fsFiles(),
             'fs.readBinary' => fn (array $p) => $this->readBinaryFile((string) $p['path']),
+            'fs.search' => fn (array $p) => $this->fsSearch((string) ($p['query'] ?? ''), (bool) ($p['regex'] ?? false), (bool) ($p['caseSensitive'] ?? false)),
+            'fs.replaceAll' => fn (array $p) => $this->fsReplaceAll((string) ($p['query'] ?? ''), (string) ($p['replacement'] ?? ''), (bool) ($p['regex'] ?? false), (bool) ($p['caseSensitive'] ?? false)),
             'fs.read' => fn (array $p) => ['path' => $p['path'], 'source' => $this->readProjectFile($p['path'])],
             'fs.write' => function (array $p) {
                 $full = $this->resolve($p['path']);
@@ -553,6 +555,106 @@ final class MethodRegistry
         }
         sort($paths);
         return ['root' => $base, 'paths' => $paths];
+    }
+
+    /** Compile a search query into a validated PCRE pattern. */
+    private function searchPattern(string $query, bool $regex, bool $caseSensitive): string
+    {
+        $body = $regex ? str_replace('/', '\/', $query) : preg_quote($query, '/');
+        $pattern = '/' . $body . '/' . ($caseSensitive ? '' : 'i');
+        if (@preg_match($pattern, '') === false) {
+            throw new RpcException(-32006, 'invalid search pattern');
+        }
+        return $pattern;
+    }
+
+    /** @return list<string> project files small enough to scan as text */
+    private function searchableFiles(): array
+    {
+        return $this->fsFiles()['paths'];
+    }
+
+    /**
+     * Project-wide text search. Returns matches grouped by file. Skips binary and
+     * large files; caps the total so a broad query can't run away.
+     *
+     * @return array{results:list<array{path:string,matches:list<array{line:int,col:int,text:string}>}>, total:int, capped:bool}
+     */
+    private function fsSearch(string $query, bool $regex, bool $caseSensitive): array
+    {
+        if ($query === '') {
+            return ['results' => [], 'total' => 0, 'capped' => false];
+        }
+        $pattern = $this->searchPattern($query, $regex, $caseSensitive);
+        $base = $this->projectRoot;
+        $results = [];
+        $total = 0;
+        $cap = 2000;
+        foreach ($this->searchableFiles() as $rel) {
+            if ($total >= $cap) {
+                break;
+            }
+            $full = $base . '/' . $rel;
+            $size = @filesize($full);
+            if ($size === false || $size > 1024 * 1024) {
+                continue;
+            }
+            $content = @file_get_contents($full);
+            if ($content === false || strpos($content, "\0") !== false) {
+                continue; // unreadable or binary
+            }
+            $matches = [];
+            foreach (explode("\n", $content) as $i => $line) {
+                if (preg_match($pattern, $line, $m, PREG_OFFSET_CAPTURE)) {
+                    $matches[] = ['line' => $i + 1, 'col' => (int) ($m[0][1] ?? 0) + 1, 'text' => mb_substr(rtrim($line, "\r"), 0, 240)];
+                    if (++$total >= $cap) {
+                        break;
+                    }
+                }
+            }
+            if ($matches) {
+                $results[] = ['path' => $rel, 'matches' => $matches];
+            }
+        }
+        return ['results' => $results, 'total' => $total, 'capped' => $total >= $cap];
+    }
+
+    /**
+     * Project-wide replace across every match of the query. Writes changed files
+     * in place; returns how many replacements and files were touched.
+     *
+     * @return array{files:int, count:int}
+     */
+    private function fsReplaceAll(string $query, string $replacement, bool $regex, bool $caseSensitive): array
+    {
+        if ($query === '') {
+            return ['files' => 0, 'count' => 0];
+        }
+        $pattern = $this->searchPattern($query, $regex, $caseSensitive);
+        // For a literal (non-regex) replacement, escape PCRE replacement specials.
+        $repl = $regex ? $replacement : str_replace(['\\', '$'], ['\\\\', '\\$'], $replacement);
+        $base = $this->projectRoot;
+        $filesChanged = 0;
+        $count = 0;
+        foreach ($this->searchableFiles() as $rel) {
+            $full = $base . '/' . $rel;
+            $size = @filesize($full);
+            if ($size === false || $size > 1024 * 1024) {
+                continue;
+            }
+            $content = @file_get_contents($full);
+            if ($content === false || strpos($content, "\0") !== false) {
+                continue;
+            }
+            $n = 0;
+            $new = preg_replace($pattern, $repl, $content, -1, $n);
+            if ($new !== null && $n > 0 && $new !== $content) {
+                @file_put_contents($full, $new);
+                $filesChanged++;
+                $count += $n;
+            }
+        }
+        return ['files' => $filesChanged, 'count' => $count];
     }
 
     /**

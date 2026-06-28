@@ -9,6 +9,7 @@ import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
 import { ProbePanel } from './panels/ProbePanel';
 import { RoutesPanel } from './panels/RoutesPanel';
+import { SearchPanel } from './panels/SearchPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane } from './panels/RunPanels';
@@ -69,6 +70,9 @@ export default function App() {
           </button>
           <button className={view === 'code' ? 'is-active' : ''} onClick={() => setView('code')}>
             Code
+          </button>
+          <button className={view === 'search' ? 'is-active' : ''} onClick={() => setView('search')}>
+            Search
           </button>
           <button className={view === 'routes' ? 'is-active' : ''} onClick={() => setView('routes')}>
             Routes
@@ -134,7 +138,11 @@ export default function App() {
       <ProvisioningCard />
       <SettingsPanel />
 
-      {view === 'routes' ? (
+      {view === 'search' ? (
+        <div className="workbench workbench--api">
+          <SearchPanel />
+        </div>
+      ) : view === 'routes' ? (
         <div className="workbench workbench--api">
           <RoutesPanel />
         </div>
