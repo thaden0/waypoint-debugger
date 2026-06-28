@@ -295,10 +295,11 @@ ${bold('Flags')}
   --language ID     backend language module   ${dim('(default: php; see `modules`)')}
   --frontend [ID]   also run a frontend runner on ws+1   ${dim('(auto when package.json present)')}
   --no-frontend     don't start a frontend runner
+  --no-terminal     don't start the PTY terminal server
   --build           serve a production UI build instead of the dev server
   --no-open         don't open the browser
   --force           reinstall dependencies even if present
-  --ws-port N · --http-port N · --ui-port N
+  --ws-port N · --http-port N · --ui-port N · --pty-port N
 `);
 }
 
@@ -307,6 +308,8 @@ const { cmd, flags, positional } = parseArgs(process.argv.slice(2));
 const FORCE = !!flags.force;
 
 (async () => {
+  // --help / -h anywhere wins (parseArgs otherwise defaults a -leading arg to `up`).
+  if (flags.help || flags.h || process.argv.includes('--help') || process.argv.includes('-h')) { help(); return; }
   switch (cmd) {
     case 'doctor': process.exit(doctor() ? 0 : 1); break;
     case 'install': process.exit(install() ? 0 : 1); break;
