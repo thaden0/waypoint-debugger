@@ -11,6 +11,7 @@ import { ProbePanel } from './panels/ProbePanel';
 import { RoutesPanel } from './panels/RoutesPanel';
 import { SearchPanel } from './panels/SearchPanel';
 import { TerminalPanel } from './panels/TerminalPanel';
+import { SessionsPanel } from './panels/SessionsPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane } from './panels/RunPanels';
@@ -225,6 +226,11 @@ export default function App() {
             <div className="rail-card__title">Swaps &amp; waypoints</div>
             <div className="rail-card__hint">“Problem code” = real I/O calls you can mock with fake data</div>
             <SwapPanel />
+          </section>
+          <section className="rail-card">
+            <div className="rail-card__title">Saved sessions</div>
+            <div className="rail-card__hint">Snapshot a run (request + ledger) to reopen or replay later</div>
+            <SessionsPanel />
           </section>
         </aside>
       </div>

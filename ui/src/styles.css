@@ -1154,3 +1154,23 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .terminal { flex: 1; min-height: 0; width: 100%; padding: 4px 4px 4px 8px; }
 .terminal .xterm, .terminal .xterm-viewport { height: 100% !important; }
 .term-toggle { font-family: ui-monospace, monospace; }
+
+/* ── Saved sessions ───────────────────────────────────────────────────────── */
+.sessions__save { display: flex; gap: 6px; margin-bottom: 8px; }
+.sessions__name { flex: 1; min-width: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 5px 8px; font-size: 11px; outline: none; }
+.sessions__name:focus { border-color: var(--accent); }
+.sessions__name:disabled { opacity: 0.5; }
+.sessions__savebtn { background: var(--cta-grad); border: 1px solid var(--cta); color: #fff; border-radius: 6px; padding: 4px 12px; font-size: 11px; cursor: pointer; }
+.sessions__savebtn:disabled { background: var(--bg-3); border-color: var(--line); color: var(--muted); cursor: default; }
+.sessions__empty { font-size: 11px; line-height: 1.5; }
+.sessions__list { display: flex; flex-direction: column; gap: 3px; }
+.session-row { display: flex; align-items: center; gap: 7px; padding: 4px 2px; font-size: 11px; }
+.session-row__kind { flex: 0 0 auto; font-size: 8px; font-weight: 700; letter-spacing: 0.4px; padding: 1px 4px; border-radius: 3px; border: 1px solid; }
+.session-row__kind.unit { color: var(--brass-bright); border-color: rgb(var(--brass-rgb) / 0.5); }
+.session-row__kind.request { color: var(--accent-bright); border-color: var(--accent); }
+.session-row__name { flex: 1; min-width: 0; background: none; border: none; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; }
+.session-row__name:hover { color: var(--accent-bright); text-decoration: underline; }
+.session-row__meta { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.session-row__btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.session-row__btn:hover { color: var(--accent-bright); }
+.session-row__btn.del:hover { color: var(--bp); }

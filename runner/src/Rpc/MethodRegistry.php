@@ -200,6 +200,13 @@ final class MethodRegistry
                 return ['ok' => true];
             },
 
+            // Named, replayable sessions. .waypoint/sessions.json.
+            'sessions.load' => fn () => ['sessions' => $this->loadJsonFile('sessions.json', [])],
+            'sessions.save' => function (array $p) {
+                $this->saveJsonFile('sessions.json', $p['sessions'] ?? []);
+                return ['ok' => true];
+            },
+
             'api.collection.load' => fn () => ['collection' => $this->loadCollection()],
             'api.collection.save' => function (array $p) {
                 $this->saveCollection($p['collection'] ?? []);
@@ -792,6 +799,29 @@ final class MethodRegistry
         }
         if (@file_put_contents($this->waypointFile('markers.json'), json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
             throw new RpcException(-32052, 'cannot write .waypoint/markers.json');
+        }
+    }
+
+    /** Read a JSON value from .waypoint/<name>, or $default if absent/invalid. */
+    private function loadJsonFile(string $name, mixed $default): mixed
+    {
+        $file = $this->waypointFile($name);
+        if (!is_file($file)) {
+            return $default;
+        }
+        $data = json_decode((string) @file_get_contents($file), true);
+        return $data ?? $default;
+    }
+
+    /** Write a JSON value to .waypoint/<name>. */
+    private function saveJsonFile(string $name, mixed $value): void
+    {
+        $dir = $this->projectRoot . '/.waypoint';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RpcException(-32050, 'cannot create .waypoint directory');
+        }
+        if (@file_put_contents($this->waypointFile($name), json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
+            throw new RpcException(-32053, "cannot write .waypoint/{$name}");
         }
     }
 

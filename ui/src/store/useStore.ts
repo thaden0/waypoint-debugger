@@ -14,6 +14,7 @@ import type {
   Mode,
   Problem,
   RunResult,
+  SavedSession,
   SwapSite,
   Transport,
   TreeModel,
@@ -156,6 +157,12 @@ interface State {
   removeSwap: (path: string, line: number) => void;
   loadState: () => Promise<void>;
   saveState: () => void;
+  sessions: SavedSession[];
+  loadSessions: () => Promise<void>;
+  saveSession: (name: string) => void;
+  openSession: (id: string) => Promise<void>;
+  replaySession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => void;
   setView: (view: View) => void;
   setMode: (mode: Mode) => void;
   setCanvasMode: (m: 'flat' | 'tree') => void;
@@ -345,6 +352,7 @@ export const useStore = create<State>((set, get) => ({
   breakpointHits: [],
   lastRunParams: null,
   lastRun: null,
+  sessions: [],
   debugActive: false,
   debugPaused: null,
   debugResult: null,
@@ -417,6 +425,7 @@ export const useStore = create<State>((set, get) => ({
         runners: [backend, fe].filter(Boolean) as RunnerDescriptor[],
       });
       void get().loadState();
+      void get().loadSessions();
       return;
     }
     // Fall back to HTTP (static analysis only).
@@ -458,6 +467,7 @@ export const useStore = create<State>((set, get) => ({
       ledger: [],
       breakpointHits: [],
       lastRun: null,
+      sessions: [],
       experiment: null,
       browserSrc: null,
       collapsedGroups: [],
@@ -465,7 +475,7 @@ export const useStore = create<State>((set, get) => ({
       mode: 'idle',
     });
     await get().loadTree();
-    await Promise.all([get().loadProjects(), get().loadStatus(), get().loadState()]);
+    await Promise.all([get().loadProjects(), get().loadStatus(), get().loadState(), get().loadSessions()]);
   },
 
   openFile: async (path: string) => {
@@ -627,6 +637,64 @@ export const useStore = create<State>((set, get) => ({
       const { markers, swaps } = get();
       void rpc('state.save', { markers, swaps }).catch(() => {});
     }, 400);
+  },
+
+  loadSessions: async () => {
+    try {
+      const { sessions } = await rpc<{ sessions: SavedSession[] }>('sessions.load');
+      set({ sessions: sessions ?? [] });
+    } catch {
+      /* none */
+    }
+  },
+
+  // Snapshot the current run (trigger + capture points + captured ledger) as a
+  // named, replayable session, and persist it.
+  saveSession: (name) => {
+    const s = get();
+    const session: SavedSession = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: name.trim() || `session ${s.sessions.length + 1}`,
+      createdAt: Date.now(),
+      runMode: s.runMode,
+      openPath: s.openPath,
+      entryMethod: s.entryMethod,
+      entryArgs: s.entryArgs,
+      reqMethod: s.reqMethod,
+      reqUri: s.reqUri,
+      markers: s.markers,
+      swaps: s.swaps,
+      ledger: s.ledger,
+      breakpointHits: s.breakpointHits,
+      lastRun: s.lastRun,
+    };
+    const sessions = [...s.sessions, session];
+    set({ sessions });
+    void rpc('sessions.save', { sessions }).catch(() => {});
+  },
+
+  // Restore a session's captured ledger + trigger + capture points (opens the
+  // file). Trigger fields are restored after openFile so they aren't clobbered.
+  openSession: async (id) => {
+    const sn = get().sessions.find((x) => x.id === id);
+    if (!sn) return;
+    set({ markers: sn.markers, swaps: sn.swaps, ledger: sn.ledger, breakpointHits: sn.breakpointHits, lastRun: sn.lastRun });
+    if (sn.openPath) await get().openFile(sn.openPath);
+    set({ runMode: sn.runMode, entryMethod: sn.entryMethod, entryArgs: sn.entryArgs, reqMethod: sn.reqMethod, reqUri: sn.reqUri });
+  },
+
+  replaySession: async (id) => {
+    await get().openSession(id);
+    const sn = get().sessions.find((x) => x.id === id);
+    if (!sn) return;
+    if (sn.runMode === 'request') await get().startRequest();
+    else await get().startRun();
+  },
+
+  deleteSession: (id) => {
+    const sessions = get().sessions.filter((x) => x.id !== id);
+    set({ sessions });
+    void rpc('sessions.save', { sessions }).catch(() => {});
   },
 
   setView: (view) => set({ view }),

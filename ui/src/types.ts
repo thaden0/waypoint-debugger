@@ -160,6 +160,25 @@ export interface RunResult {
   breakpoint?: BreakpointHit;
 }
 
+// A named, replayable snapshot: the trigger (unit entry or HTTP request) + the
+// capture points (markers/swaps) + the captured result (ledger/breakpoints).
+export interface SavedSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  runMode: 'unit' | 'request';
+  openPath: string | null;
+  entryMethod: string | null;
+  entryArgs: string;
+  reqMethod: string;
+  reqUri: string;
+  markers: GutterMarker[];
+  swaps: SwapSite[];
+  ledger: LedgerEntry[];
+  breakpointHits: BreakpointHit[];
+  lastRun: RunResult | null;
+}
+
 export interface InvokeResult {
   ok: boolean;
   result?: unknown;
