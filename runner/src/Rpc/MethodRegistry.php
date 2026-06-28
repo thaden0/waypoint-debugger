@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waypoint\Runner\Rpc;
 
 use Waypoint\Runner\Capture\Recorder;
+use Waypoint\Runner\Docker\ComposeProject;
 use Waypoint\Runner\Docker\Orchestrator;
 use Waypoint\Runner\Host\HostInterface;
 use Waypoint\Runner\Module\FrameworkModule;
@@ -378,6 +379,22 @@ final class MethodRegistry
                 return ['routes' => $res['routes'] ?? []];
             },
 
+            // Route introspection through Docker — for projects whose PHP/deps
+            // can't boot on the host (e.g. a PHP 8.4 app on an 8.3 host). Runs
+            // `artisan route:list --json` inside the app container.
+            'routes.docker' => function () {
+                $prefer = ProjectConfig::read($this->projectRoot)['docker']['compose'] ?? null;
+                $composePath = ComposeProject::find($this->projectRoot, $prefer);
+                if ($composePath === null) {
+                    throw new RpcException(-32030, 'no compose file in project root');
+                }
+                $service = ComposeProject::load($composePath)->appServices()[0] ?? null;
+                if ($service === null) {
+                    throw new RpcException(-32031, 'no app service in the compose file');
+                }
+                return ['routes' => $this->dockerRoutes($composePath, $service)];
+            },
+
             // API console: send a request. Two targets — in-process through the
             // instrumented kernel (capture for free, fills the ledger), or a plain
             // external HTTP call run server-side (no CORS, no capture).
@@ -555,6 +572,46 @@ final class MethodRegistry
         }
         sort($paths);
         return ['root' => $base, 'paths' => $paths];
+    }
+
+    /**
+     * Run `artisan route:list --json` in the app container and map it to the
+     * api.routes shape.
+     *
+     * @return list<array{methods:list<string>,uri:string,name:?string,action:string,middleware:list<string>,params:list<string>}>
+     */
+    private function dockerRoutes(string $composePath, string $service): array
+    {
+        $cmd = sprintf(
+            'docker compose -f %s exec -T %s php artisan route:list --json 2>/dev/null',
+            escapeshellarg($composePath),
+            escapeshellarg($service)
+        );
+        $raw = json_decode((string) @shell_exec($cmd), true);
+        if (!is_array($raw)) {
+            return [];
+        }
+        $routes = [];
+        foreach ($raw as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $uri = ltrim((string) ($r['uri'] ?? ''), '/');
+            $mw = $r['middleware'] ?? [];
+            if (is_string($mw)) {
+                $mw = $mw === '' ? [] : (preg_split('/[\n,]+/', $mw) ?: []);
+            }
+            preg_match_all('/\{(\w+)\??\}/', $uri, $params);
+            $routes[] = [
+                'methods' => array_values(array_filter(explode('|', (string) ($r['method'] ?? '')), static fn ($m) => $m !== '')),
+                'uri' => $uri,
+                'name' => isset($r['name']) ? (string) $r['name'] : null,
+                'action' => (string) ($r['action'] ?? 'Closure'),
+                'middleware' => array_values(array_map('strval', (array) $mw)),
+                'params' => $params[1] ?? [],
+            ];
+        }
+        return $routes;
     }
 
     /** Compile a search query into a validated PCRE pattern. */

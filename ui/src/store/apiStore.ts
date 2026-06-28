@@ -16,6 +16,21 @@ async function rpc<T>(method: string, params: Record<string, unknown> = {}): Pro
   return call<T>(method, params);
 }
 
+// Routes from a native host boot; if that yields nothing (e.g. the project's PHP
+// version can't boot on this host), fall back to introspecting via Docker.
+async function fetchRoutes(): Promise<ApiRoute[]> {
+  try {
+    const { routes } = await rpc<{ routes: ApiRoute[] }>('api.routes');
+    if (routes && routes.length) return routes;
+  } catch { /* host couldn't boot — try docker */ }
+  try {
+    const { routes } = await rpc<{ routes: ApiRoute[] }>('routes.docker');
+    return routes ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ApiRoute {
   methods: string[];
   uri: string;
@@ -195,8 +210,8 @@ export const useApiStore = create<ApiState>((set, get) => ({
 
   load: async () => {
     try {
-      const [{ routes }, { collection }] = await Promise.all([
-        rpc<{ routes: ApiRoute[] }>('api.routes'),
+      const [routes, { collection }] = await Promise.all([
+        fetchRoutes(),
         rpc<{ collection: { requests: ApiRequest[]; environments: ApiEnv[]; activeEnv: string | null } }>('api.collection.load'),
       ]);
       const environments = collection.environments?.length ? collection.environments : [{ name: 'local', vars: [{ key: 'base', value: 'http://localhost:8000', on: true }] }];
@@ -220,8 +235,7 @@ export const useApiStore = create<ApiState>((set, get) => ({
     if (get().refreshing) return;
     set({ refreshing: true });
     try {
-      const { routes } = await rpc<{ routes: ApiRoute[] }>('api.routes');
-      set({ routes });
+      set({ routes: await fetchRoutes() });
     } catch {
       // leave the existing list in place on a transient failure
     } finally {
