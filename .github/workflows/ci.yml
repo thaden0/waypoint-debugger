@@ -24,6 +24,8 @@ jobs:
         run: php bin/smoke.php
       - name: Test
         run: composer test
+      - name: Probe core tests
+        run: php ../probe/run-tests.php
 
   js-adapter:
     name: JS adapter (vitest)

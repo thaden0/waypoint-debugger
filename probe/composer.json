@@ -1,0 +1,26 @@
+{
+    "name": "waypoint/probe",
+    "description": "Waypoint in-project probe — buffers errors/log events and exposes an authenticated endpoint the Waypoint tool pulls from (and pushes config to). Dev-or-prod, config-gated, bounded buffer.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.2",
+        "illuminate/support": "^10 || ^11 || ^12 || ^13",
+        "illuminate/http": "^10 || ^11 || ^12 || ^13"
+    },
+    "autoload": {
+        "psr-4": {
+            "Waypoint\\Probe\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Waypoint\\Probe\\ProbeServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
