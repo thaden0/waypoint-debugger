@@ -128,8 +128,8 @@ body { background: var(--bg); color: var(--text); }
   background: var(--bg-1); border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.3px; }
-.brand__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; font-size: 14px; }
+.brand__mark { height: 30px; width: auto; display: block; filter: drop-shadow(0 0 5px rgb(var(--accent-rgb) / 0.5)); }
 .spacer { flex: 1; }
 
 .open-project { display: flex; align-items: center; gap: 4px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }

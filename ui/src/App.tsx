@@ -55,8 +55,8 @@ export default function App() {
   return (
     <div className={'app app--' + mode}>
       <header className="topbar">
-        <div className="brand">
-          <span className="brand__dot" /> Waypoint
+        <div className="brand" title="Waypoint">
+          <img className="brand__mark" src="/logo-mark.png" alt="Waypoint" /> Waypoint
         </div>
 
         <ProjectPicker />
