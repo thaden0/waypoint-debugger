@@ -557,10 +557,17 @@ endpoint. Validated E2E (install + `artisan serve`): 401 without the secret,
 structured exception capture with the request, redaction, config round-trip;
 framework-free core unit-tested in CI.
 
-**Remaining (slice 2):** tool side — `probe.pull`/`probe.config` RPC (host-side HTTP
-to the endpoint), install + secret management, a Probe UI listing pulled records with
-**trace-through-host** on each error; then the dev ring-buffer state saves on trigger
-events.
+**Built (slice 2):** tool side — `probe.pull`/`probe.config`/`probe.settings.*` RPC
+(host-side curl to the endpoint; no CORS, reaches staging/prod), the endpoint+secret in
+the personal `.waypoint/local.json` (gitignored), and a **Probe view** that lists pulled
+records and **traces each error through the instrumented host** (re-runs the captured
+request via `api.send` with placed waypoints, linking the BE waypoint trace — World-B,
+from a remote env). Validated E2E: pulled a captured `GET /boom` exception and traced it
+to `TaskService::summary`.
+
+**Remaining (slice 2b):** the dev **ring-buffer state saves** — on a configured trigger
+event, capture richer per-waypoint state in-app (heavy, dev-only, toggled remotely) for
+non-deterministic bugs replay can't reproduce.
 
 ### 14.5 Outbound HTTP mock (boundary-level), distinct from swaps
 
