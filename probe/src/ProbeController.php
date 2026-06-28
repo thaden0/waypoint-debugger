@@ -17,8 +17,6 @@ use Waypoint\Probe\Buffer\Buffer;
  */
 final class ProbeController
 {
-    private const CONFIG_KEY = 'waypoint:probe:config';
-
     public function __construct(private Buffer $buffer)
     {
     }
@@ -50,7 +48,7 @@ final class ProbeController
             'triggers' => array_values(array_filter((array) $request->input('triggers', []))),
         ];
         if (function_exists('cache')) {
-            cache()->put(self::CONFIG_KEY, $config, 86400);
+            cache()->put(ProbeConfig::CONFIG_KEY, $config, 86400);
         }
         return response()->json(['ok' => true, 'config' => $config]);
     }
@@ -58,10 +56,7 @@ final class ProbeController
     /** @return array{ring_buffer:bool,triggers:list<string>} */
     private function activeConfig(): array
     {
-        $stored = function_exists('cache') ? cache()->get(self::CONFIG_KEY) : null;
-        return is_array($stored)
-            ? ['ring_buffer' => (bool) ($stored['ring_buffer'] ?? false), 'triggers' => array_values($stored['triggers'] ?? [])]
-            : ['ring_buffer' => (bool) config('waypoint-probe.ring_buffer', false), 'triggers' => array_values(config('waypoint-probe.triggers', []))];
+        return ProbeConfig::active();
     }
 
     private function authorized(Request $request): bool

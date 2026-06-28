@@ -193,6 +193,7 @@ export interface ProbeRecord {
   level?: string;
   request?: { method?: string; uri?: string; input?: Record<string, unknown>; headers?: Record<string, string> };
   context?: Record<string, unknown>;
+  breadcrumbs?: { type: string; at: number; data: Record<string, unknown> }[];
 }
 
 export interface NetworkRecord {

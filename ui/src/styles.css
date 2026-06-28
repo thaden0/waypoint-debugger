@@ -960,3 +960,12 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .probe-rec__arrow { color: var(--brass); font-size: 11px; }
 .probe-rec__wp { color: var(--code-id); background: var(--bg-1); border-radius: 3px; padding: 1px 6px; font-family: ui-monospace, monospace; }
 .probe-rec__traceerr { color: var(--bp); font-size: 11px; }
+
+/* Probe breadcrumbs */
+.probe-rec__crumbs { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid var(--brass); padding-left: 8px; margin: 2px 0; }
+.probe-crumb { display: flex; align-items: baseline; gap: 6px; font-size: 11px; padding: 1px 0; }
+.probe-crumb__type { font-size: 8px; text-transform: uppercase; color: var(--muted); flex: 0 0 42px; }
+.probe-crumb.query .probe-crumb__type { color: var(--brass); }
+.probe-crumb__sql { font-family: ui-monospace, monospace; color: var(--text); }
+.probe-crumb__meta { font-size: 10px; }
+.probe-crumb__log b { color: var(--warn); text-transform: uppercase; font-size: 10px; }

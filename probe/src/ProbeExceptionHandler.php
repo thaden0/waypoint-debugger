@@ -22,6 +22,7 @@ final class ProbeExceptionHandler implements ExceptionHandler
         private ExceptionHandler $inner,
         private Buffer $buffer,
         private Recorder $recorder,
+        private Breadcrumbs $breadcrumbs,
         private Container $app,
     ) {
     }
@@ -30,7 +31,13 @@ final class ProbeExceptionHandler implements ExceptionHandler
     {
         try {
             if ($this->inner->shouldReport($e)) {
-                $this->buffer->push($this->recorder->exceptionRecord($e, $this->requestData()));
+                $record = $this->recorder->exceptionRecord($e, $this->requestData());
+                // Attach the breadcrumb trail when the ring buffer is on + a trigger matches.
+                $cfg = ProbeConfig::active();
+                if ($cfg['ring_buffer'] && ProbeConfig::triggered($e, $cfg['triggers'])) {
+                    $record['breadcrumbs'] = $this->breadcrumbs->all();
+                }
+                $this->buffer->push($record);
             }
         } catch (Throwable) {
             // the probe must never break error handling

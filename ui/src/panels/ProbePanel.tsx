@@ -71,6 +71,19 @@ function ProbeRow({ rec }: { rec: ProbeRecord }) {
               <code>{JSON.stringify(rec.request.input ?? {})}</code>
             </div>
           )}
+          {rec.breadcrumbs && rec.breadcrumbs.length > 0 && (
+            <div className="probe-rec__crumbs">
+              <span className="muted">breadcrumbs before the error ({rec.breadcrumbs.length})</span>
+              {rec.breadcrumbs.map((c, i) => (
+                <div className={'probe-crumb ' + c.type} key={i}>
+                  <span className="probe-crumb__type">{c.type}</span>
+                  {c.type === 'query'
+                    ? <><code className="probe-crumb__sql">{String(c.data.sql ?? '')}</code><span className="muted probe-crumb__meta">{String(c.data.ms ?? '?')}ms · {String(c.data.bindings ?? 0)} bindings</span></>
+                    : <span className="probe-crumb__log"><b>{String(c.data.level ?? '')}</b> {String(c.data.message ?? '')}</span>}
+                </div>
+              ))}
+            </div>
+          )}
           {rec.trace && rec.trace.length > 0 && (
             <details className="probe-rec__trace"><summary>{rec.trace.length} frames</summary>
               {rec.trace.slice(0, 12).map((f, i) => <div className="probe-rec__frame" key={i}>{f}</div>)}

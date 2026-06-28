@@ -6,6 +6,7 @@ namespace Waypoint\Probe;
 
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Waypoint\Probe\Buffer\Buffer;
 use Waypoint\Probe\Buffer\BufferFactory;
@@ -23,14 +24,17 @@ final class ProbeServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../config/waypoint-probe.php', 'waypoint-probe');
         $this->app->singleton(Buffer::class, fn ($app) => BufferFactory::make($app['config']->get('waypoint-probe.buffer', [])));
         $this->app->singleton(Recorder::class, fn ($app) => new Recorder($app['config']->get('waypoint-probe.redact', [])));
+        $this->app->singleton(Breadcrumbs::class, fn () => new Breadcrumbs());
 
         // Capture reported exceptions structurally by decorating the handler — the
-        // reliable point (the routing pipeline hides them from middleware).
+        // reliable point (the routing pipeline hides them from middleware). The
+        // breadcrumbs (when the ring buffer is on + a trigger matches) ride along.
         if ($this->armed() && $this->app['config']->get('waypoint-probe.capture.exceptions', true)) {
             $this->app->extend(ExceptionHandler::class, fn ($handler, $app) => new ProbeExceptionHandler(
                 $handler,
                 $app->make(Buffer::class),
                 $app->make(Recorder::class),
+                $app->make(Breadcrumbs::class),
                 $app,
             ));
         }
@@ -51,6 +55,23 @@ final class ProbeServiceProvider extends ServiceProvider
         $router = $this->app['router'];
         $router->get($path, [ProbeController::class, 'pull']);
         $router->post($path, [ProbeController::class, 'config']);
+
+        // Ring buffer (heavy, dev-oriented, remotely toggled): only when ON do we
+        // accumulate breadcrumbs (recent queries + log events) per request — so the
+        // overhead is zero when disabled. Attached to the error record on a trigger.
+        if (ProbeConfig::active()['ring_buffer']) {
+            $crumbs = $this->app->make(Breadcrumbs::class);
+            DB::listen(static function ($query) use ($crumbs): void {
+                $crumbs->add('query', [
+                    'sql' => $query->sql,
+                    'bindings' => count($query->bindings), // count only — bindings may hold PII
+                    'ms' => round((float) $query->time, 2),
+                ]);
+            });
+            $this->app['events']->listen(MessageLogged::class, static function (MessageLogged $e) use ($crumbs): void {
+                $crumbs->add('log', ['level' => $e->level, 'message' => $e->message]);
+            });
+        }
 
         // Capture log events at/above the configured level (framework event — no
         // Monolog-version coupling). Skip records that carry an exception — those
