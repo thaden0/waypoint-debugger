@@ -8,6 +8,7 @@ import { RunControls } from './panels/RunPanel';
 import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
 import { ProbePanel } from './panels/ProbePanel';
+import { RoutesPanel } from './panels/RoutesPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane } from './panels/RunPanels';
@@ -68,6 +69,9 @@ export default function App() {
           </button>
           <button className={view === 'code' ? 'is-active' : ''} onClick={() => setView('code')}>
             Code
+          </button>
+          <button className={view === 'routes' ? 'is-active' : ''} onClick={() => setView('routes')}>
+            Routes
           </button>
           <button className={view === 'api' ? 'is-active' : ''} onClick={() => setView('api')}>
             API
@@ -130,7 +134,11 @@ export default function App() {
       <ProvisioningCard />
       <SettingsPanel />
 
-      {view === 'api' ? (
+      {view === 'routes' ? (
+        <div className="workbench workbench--api">
+          <RoutesPanel />
+        </div>
+      ) : view === 'api' ? (
         <div className="workbench workbench--api">
           <ApiConsole />
         </div>
