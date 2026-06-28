@@ -52,6 +52,15 @@ export interface Experiment {
   running: boolean;
 }
 
+interface EditorBuffer {
+  source: string;
+  savedSource: string;
+  structure: FileModel | null;
+  problems: Problem[];
+  entryMethod: string | null;
+  imageView: { url: string; mime: string } | null;
+}
+
 interface State {
   runner: RunnerInfo | null;
   connected: boolean;
@@ -66,6 +75,8 @@ interface State {
   // Open editor tabs. An unlocked tab is the single "preview" slot (reused when
   // you open another file); locking it pins the tab so it survives navigation.
   tabs: { path: string; locked: boolean }[];
+  // Per-tab editor state, keyed by path, so switching tabs keeps unsaved edits.
+  buffers: Record<string, EditorBuffer>;
   source: string;
   savedSource: string; // last-persisted content; source !== savedSource => dirty
   structure: FileModel | null;
@@ -305,6 +316,7 @@ export const useStore = create<State>((set, get) => ({
   imageView: null,
   openPath: null,
   tabs: [],
+  buffers: {},
   source: '',
   savedSource: '',
   structure: null,
@@ -427,6 +439,7 @@ export const useStore = create<State>((set, get) => ({
       // reset the workspace for the new project
       openPath: null,
       tabs: [],
+      buffers: {},
       files: [],
       imageView: null,
       source: '',
@@ -458,13 +471,23 @@ export const useStore = create<State>((set, get) => ({
       else tabs.push({ path, locked: false });
       return { tabs };
     });
+    // Already open → restore its buffer (keeps unsaved edits; no refetch).
+    const cached = get().buffers[path];
+    if (cached) {
+      set({ openPath: path, source: cached.source, savedSource: cached.savedSource, structure: cached.structure, problems: cached.problems, entryMethod: cached.entryMethod, imageView: cached.imageView, view: 'code' });
+      return;
+    }
+
+    const commit = (entry: EditorBuffer) =>
+      set((s) => ({ openPath: path, view: 'code', ...entry, buffers: { ...s.buffers, [path]: entry } }));
+
     const ext = (path.split('.').pop() ?? '').toLowerCase();
     const IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp', 'avif'];
 
     // Image → fetch as base64 and show it in an <img>.
     if (IMAGE.includes(ext)) {
       const bin = await rpc<{ mime: string; base64: string }>('fs.readBinary', { path });
-      set({ openPath: path, imageView: { url: `data:${bin.mime};base64,${bin.base64}`, mime: bin.mime }, source: '', savedSource: '', structure: null, problems: [], view: 'code', entryMethod: null });
+      commit({ source: '', savedSource: '', structure: null, problems: [], entryMethod: null, imageView: { url: `data:${bin.mime};base64,${bin.base64}`, mime: bin.mime } });
       return;
     }
 
@@ -472,7 +495,7 @@ export const useStore = create<State>((set, get) => ({
     // no class structure or swap scan applies.
     if (ext !== 'php') {
       const { source } = await rpc<{ source: string }>('fs.read', { path });
-      set({ openPath: path, source, savedSource: source, structure: null, problems: [], imageView: null, view: 'code', entryMethod: null });
+      commit({ source, savedSource: source, structure: null, problems: [], entryMethod: null, imageView: null });
       return;
     }
 
@@ -491,37 +514,53 @@ export const useStore = create<State>((set, get) => ({
         break;
       }
     }
-    set({ openPath: path, source, savedSource: source, structure, problems, imageView: null, view: 'code', entryMethod });
+    commit({ source, savedSource: source, structure, problems, entryMethod, imageView: null });
   },
 
   toggleTabLock: (path) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.path === path ? { ...t, locked: !t.locked } : t)) })),
 
   closeTab: (path) => {
-    const { tabs, openPath } = get();
+    const { tabs, openPath, buffers } = get();
     const idx = tabs.findIndex((t) => t.path === path);
     const next = tabs.filter((t) => t.path !== path);
-    set({ tabs: next });
+    const nextBuffers = { ...buffers };
+    delete nextBuffers[path];
+    set({ tabs: next, buffers: nextBuffers });
     if (openPath === path) {
       const fallback = next[Math.min(idx, next.length - 1)];
       if (fallback) void get().openFile(fallback.path);
-      else set({ openPath: null, source: '', savedSource: '', structure: null, problems: [] });
+      else set({ openPath: null, source: '', savedSource: '', structure: null, problems: [], imageView: null });
     }
   },
 
-  setEditedSource: (source) => set({ source }),
+  setEditedSource: (source) =>
+    set((s) => {
+      const b = s.openPath ? s.buffers[s.openPath] : undefined;
+      return { source, buffers: b ? { ...s.buffers, [s.openPath as string]: { ...b, source } } : s.buffers };
+    }),
 
-  // Persist the editor content, then re-derive structure + problems from the
-  // saved source (line-based markers/eligibility track the new code).
+  // Persist the editor content. For PHP, re-derive structure + problems from the
+  // saved source (line-based markers/eligibility track the new code); other file
+  // types have no structure to re-scan.
   saveFile: async () => {
     const { openPath, source } = get();
     if (!openPath) return;
     await rpc('fs.write', { path: openPath, source });
-    const [structure, { problems }] = await Promise.all([
-      rpc<FileModel>('structure.file', { path: openPath, source }),
-      rpc<{ problems: Problem[] }>('swap.scan', { path: openPath, source }),
-    ]);
-    set({ savedSource: source, structure, problems, log: [...get().log, `saved ${openPath}`] });
+    let structure = get().structure;
+    let problems = get().problems;
+    if (openPath.endsWith('.php')) {
+      const [st, sc] = await Promise.all([
+        rpc<FileModel>('structure.file', { path: openPath, source }),
+        rpc<{ problems: Problem[] }>('swap.scan', { path: openPath, source }),
+      ]);
+      structure = st;
+      problems = sc.problems;
+    }
+    set((s) => ({
+      savedSource: source, structure, problems, log: [...s.log, `saved ${openPath}`],
+      buffers: { ...s.buffers, [openPath]: { ...(s.buffers[openPath] ?? { entryMethod: null, imageView: null }), source, savedSource: source, structure, problems } },
+    }));
   },
 
   toggleMarker: (line, kind) => {
