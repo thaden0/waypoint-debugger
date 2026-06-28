@@ -30,16 +30,27 @@ const CLASS_W = 248;
 const CLASS_HEAD = 38;
 const ROW_H = 19;
 
-export function buildTree(files: FileModel[]): FolderEntry {
-  const root: FolderEntry = { name: '', path: '', folders: [], files: [] };
-
+// Map each file path to the classes it declares (PHP/JS-TS structure). Files with
+// no classes (configs, markdown, route files, images …) simply aren't in the map.
+export function classesByPath(files: FileModel[]): Map<string, ClassEntry[]> {
+  const m = new Map<string, ClassEntry[]>();
   for (const file of files) {
     const classes: ClassEntry[] = file.nodes
       .filter((n): n is ClassModel => n.kind !== 'function' && (n as ClassModel).name !== '(anonymous)' && !!(n as ClassModel).name)
       .map((model) => ({ model, filePath: file.path }));
-    if (classes.length === 0) continue;
+    if (classes.length) m.set(file.path, classes);
+  }
+  return m;
+}
 
-    const segments = file.path.split('/');
+// Build the folder hierarchy from the full file list; attach class structure to
+// the files that have it. Class-less files (configs, md, images, routes) are
+// kept as plain leaves so they're visible and openable.
+export function buildTree(paths: string[], classes?: Map<string, ClassEntry[]>): FolderEntry {
+  const root: FolderEntry = { name: '', path: '', folders: [], files: [] };
+
+  for (const path of paths) {
+    const segments = path.split('/');
     const fileName = segments.pop()!;
     let folder = root;
     let acc = '';
@@ -52,7 +63,7 @@ export function buildTree(files: FileModel[]): FolderEntry {
       }
       folder = next;
     }
-    folder.files.push({ name: fileName, path: file.path, classes });
+    folder.files.push({ name: fileName, path, classes: classes?.get(path) ?? [] });
   }
   return collapseSingleChildFolders(root);
 }

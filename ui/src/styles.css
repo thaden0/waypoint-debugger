@@ -7,32 +7,35 @@
  */
 :root,
 :root[data-theme='empire'] {
-  /* metallic black surfaces (deep -> raised) */
-  --bg: #08080a;
-  --bg-1: #100f12;
-  --bg-2: #161418;
-  --bg-3: #201c20;
+  /* Two neutral (achromatic) levels so red is the only hue. Base = the "black"
+     (canvas, file list); bg-2 = the surface one step up (cards, inputs); bg-3 is
+     a hover state, not a third background. Base is off-pure-black on purpose. */
+  --bg: #0c0c0d;        /* base / level 1 — the black */
+  --bg-1: #131315;      /* base+ (chrome: topbar, chips) */
+  --bg-2: #1b1b1e;      /* surface / level 2 — cards, inputs */
+  --bg-3: #26262a;      /* hover / raised state */
   --metal: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 42%);
   --metal-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 55%);
 
-  --line: #2a2730;
-  --line-strong: #3c2a2f; /* faintly red-tinted edge for emphasis */
+  --line: #2a2a2e;
+  --line-strong: #3a3338; /* faintly red-tinted edge for emphasis */
 
-  --text: #ece8ea;
-  --muted: #8a828d;
+  --text: #ebebed;
+  --muted: #8b8b90;
   --code-id: #d9bd7a; /* identifiers in code/scope — warm gold */
 
   /* imperial red — the signature accent (saturated crimson) */
-  --accent: #c1141f;
-  --accent-rgb: 193 20 31;
-  --accent-bright: #e01d29;
-  --accent-bright-rgb: 224 29 41;
-  --glow: 0 0 14px rgba(224, 29, 41, 0.55);
+  --accent: #7c1f24;
+  --accent-rgb: 124 31 36;
+  --accent-bright: #9c2a30;
+  --accent-bright-rgb: 156 42 48;
+  --glow: 0 0 14px rgba(156, 42, 48, 0.5);
 
-  /* brass — the third accent: officer-regalia trim on black/red. Restrained. */
-  --brass: #b0894a;
-  --brass-bright: #cda85c;
-  --brass-rgb: 176 137 74;
+  /* copper — restrained antique copper (~29°, muted), used only as small trim:
+     glyphs + spines, never whole names. Red + black + slate dominate. */
+  --brass: #ab8159;
+  --brass-bright: #c1966a;
+  --brass-rgb: 171 129 89;
 
   /* primary action button: a DEEP crimson that GLOWS (dark fill, strong halo) */
   --cta: #951620;
@@ -41,8 +44,14 @@
 
   /* onyx cards: two shades alternate by nesting depth; a saturated crimson
      stroke + a subtle red glow are the theme's signature ("diagnostic console") */
-  --card-a: #0e0c10;
-  --card-b: #19151a;
+  --card-a: #121214;
+  --card-b: #1d1d20;
+  /* surface (level 2): neutral achromatic graphite, one step above the base,
+     with a faint diagonal hatch texture so it reads as a surface not flat fill.
+     No hue — red is the only colour. */
+  --card-2:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.014) 0 1px, transparent 1px 5px),
+    linear-gradient(159deg, #1a1a1d 0%, #212124 46%, #161618 100%);
   --card-edge: rgb(var(--accent-rgb) / 0.5);
   --card-glow: 0 0 13px rgb(var(--accent-rgb) / 0.16), 0 5px 16px rgba(0, 0, 0, 0.55);
   --card-glow-strong: 0 0 24px rgb(var(--accent-rgb) / 0.26), 0 9px 26px rgba(0, 0, 0, 0.62);
@@ -50,20 +59,24 @@
   /* signals */
   --bp: #f03b3b; /* breakpoints / danger */
   --bp-rgb: 240 59 59;
-  --wp: #c9a24a; /* waypoints — gold */
-  --wp-rgb: 201 162 74;
-  --ok: #c9a24a; /* connected / positive — gold */
-  --ok-rgb: 201 162 74;
+  --wp: #c98f4a; /* waypoints — copper-gold */
+  --wp-rgb: 201 143 74;
+  --ok: #c98f4a; /* connected / positive — copper-gold */
+  --ok-rgb: 201 143 74;
   --warn: #d99a3a; /* problem-code / warnings — amber */
   --warn-rgb: 217 154 58;
   --danger: #f03b3b;
   --danger-rgb: 240 59 59;
 
   /* canvas node kinds */
-  --kind-class: #c12d36;
-  --kind-interface: #c9a24a;
+  --kind-class: #8a262c;
+  --kind-interface: #c98f4a;
   --kind-trait: #8a8f98;
-  --kind-enum: #d3232f;
+  --kind-enum: #9e2730;
+
+  /* canvas/navigator surfaces */
+  --canvas-dot: #1c1c1f;
+  --edge: #3a2a30;
 
   --radius: 5px;
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -101,8 +114,11 @@
   --kind-interface: #a855f7;
   --kind-trait: #14b8a6;
   --kind-enum: #f59e0b;
+  --canvas-dot: #16213a;
+  --edge: #334155;
   --card-a: #0f1729;
   --card-b: #16213a;
+  --card-2: linear-gradient(159deg, #0f1729 0%, #1b2942 46%, #0f1729 100%);
   --card-edge: var(--line);
   --card-glow: 0 4px 14px rgba(0, 0, 0, 0.35);
   --card-glow-strong: 0 6px 18px rgba(0, 0, 0, 0.4);
@@ -185,7 +201,11 @@ body { background: var(--bg); color: var(--text); }
 .exp-row:hover { background: var(--bg-3); }
 .exp-row--file.is-open { background: rgb(var(--accent-rgb) / 0.16); }
 .exp-chevron { color: var(--muted); width: 9px; flex: 0 0 9px; font-size: 9px; }
-.exp-icon { font-size: 10px; opacity: 0.85; flex: 0 0 auto; }
+.exp-icon { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.exp-svg { display: block; }
+.exp-row--dir .exp-icon { color: var(--accent); }
+.exp-row--file .exp-icon { color: var(--muted); }
+.exp-row--file:hover .exp-icon, .exp-row--file.is-open .exp-icon { color: var(--accent-bright); }
 .exp-name { overflow: hidden; text-overflow: ellipsis; }
 .exp-row--dir .exp-name { color: var(--text); font-weight: 600; }
 
@@ -427,10 +447,10 @@ button.primary { background: var(--accent) !important; border-color: var(--accen
    red + glow is reserved for the main run actions. Neutrals carry
    the information; gold marks the positive/active.
    ============================================================ */
-.topbar { background: linear-gradient(180deg, #100d13 0%, #1a141f 50%, #0e0b11 100%); border-bottom: 1px solid var(--line-strong); box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 2px 10px rgb(0 0 0 / 0.5); }
-.rail { background: linear-gradient(110deg, #0f0c13, #0c090f); }
+.topbar { background: linear-gradient(180deg, #141416 0%, #1d1d20 50%, #100f11 100%); border-bottom: 1px solid var(--line-strong); box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 2px 10px rgb(0 0 0 / 0.5); }
+.rail { background: linear-gradient(110deg, #0d0d0e, #0a0a0b); }
 .rail-card {
-  background: linear-gradient(159deg, #110c14 0%, #1d1623 46%, #0e0a11 100%);
+  background: var(--card-2);
   border: 1px solid rgb(255 255 255 / 0.07); border-radius: 9px;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 6px 18px rgb(0 0 0 / 0.4);
   position: relative; overflow: hidden;
@@ -513,6 +533,19 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 
 /* Code pane — editable, with a save bar */
 .code-pane { display: flex; flex-direction: column; height: 100%; }
+
+/* Editor tabs: preview (italic, hollow dot) vs locked (upright, filled oxblood dot) */
+.tabs { display: flex; align-items: stretch; gap: 1px; height: 32px; flex: 0 0 auto; background: var(--bg-1); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 9px; max-width: 200px; background: var(--bg-2); border-right: 1px solid var(--line); color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; flex: 0 0 auto; }
+.tab:hover { background: var(--bg-3); }
+.tab.is-active { background: var(--bg-3); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+.tab:not(.is-locked) .tab__name { font-style: italic; }
+.tab__lock { background: none; border: none; padding: 0; font-size: 10px; line-height: 1; color: var(--muted); cursor: pointer; }
+.tab.is-locked .tab__lock { color: var(--accent-bright); }
+.tab__close { background: none; border: none; padding: 0 2px; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; border-radius: 3px; opacity: 0; }
+.tab:hover .tab__close, .tab.is-active .tab__close { opacity: 1; }
+.tab__close:hover { background: var(--bg-1); color: var(--text); }
 .code-pane__bar { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: linear-gradient(180deg, #14111a, #0e0b11); border-bottom: 1px solid var(--line-strong); flex: 0 0 auto; }
 .code-pane__path { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
 .code-pane__dirty { color: var(--brass-bright); }
@@ -969,3 +1002,92 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .probe-crumb__sql { font-family: ui-monospace, monospace; color: var(--text); }
 .probe-crumb__meta { font-size: 10px; }
 .probe-crumb__log b { color: var(--warn); text-transform: uppercase; font-size: 10px; }
+
+/* ── Navigator: xyflow + Aria Miller columns (main area) ───────────────────
+   Locked UML-style cards on a fixed grid, a lit spine for the drill path,
+   big targets, keyboard-first. The opinionated heart of the app. */
+.navigator { position: absolute; inset: 0; outline: none; }
+.nav-empty { color: var(--muted); padding: 16px; font-size: 13px; }
+
+/* per-kind: --kc drives the left spine + glyph; --kc-text is the readable
+   on-card text tone (dark kinds get a lighter variant). */
+.nav-card { width: 216px; --kc: var(--line-strong); --kc-text: var(--kc); }
+/* Names stay neutral-light so the nav reads grayscale; the kind colour lives in
+   the glyph + left spine only. Classes/enums keep rose (that's red, on-theme). */
+.nav-card.kind-folder { --kc: var(--brass); --kc-text: var(--text); }
+.nav-card.kind-file { --kc: var(--muted); --kc-text: var(--text); }
+.nav-card.kind-class { --kc: var(--kind-class); --kc-text: #d68f93; }
+.nav-card.kind-interface { --kc: var(--kind-interface); --kc-text: var(--text); }
+.nav-card.kind-trait { --kc: var(--kind-trait); --kc-text: var(--text); }
+.nav-card.kind-enum { --kc: var(--kind-enum); --kc-text: #d68f93; }
+.nav-card.kind-method { --kc: var(--wp); --kc-text: var(--text); }
+.nav-card.kind-property { --kc: var(--muted); --kc-text: var(--text); }
+
+.nav-card__btn {
+  display: block; width: 216px; padding: 0; cursor: pointer; text-align: left; outline: none;
+  color: var(--text); /* buttons don't inherit page color — set it once here */
+  background: var(--card-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--kc); border-radius: 8px; overflow: hidden;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.38);
+  transition: border-color 90ms ease, filter 90ms ease, transform 90ms ease;
+}
+.nav-card__btn:hover { filter: brightness(1.25); }
+.nav-card__head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; min-height: 38px; }
+.nav-card__kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; color: var(--kc-text); opacity: 0.9; }
+.nav-card__name { flex: 1; font-weight: 700; font-size: 13px; color: var(--kc-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 7px; }
+.nav-card__glyph { font-family: ui-monospace, monospace; font-size: 12px; color: var(--kc); }
+.nav-card__sym { flex: 1; font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--kc-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-card__vis { color: var(--kc); font-weight: 700; }
+.nav-card__more { color: var(--muted); font-size: 13px; line-height: 1; margin-left: auto; }
+.nav-card.is-expanded .nav-card__more { color: var(--kc-text); }
+
+/* selected card — bright accent border + lift */
+.nav-card.is-selected .nav-card__btn {
+  border-color: var(--accent); border-left-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 16px rgba(0, 0, 0, 0.5); transform: translateY(-1px);
+}
+.nav-card.is-selected .nav-card__more { color: var(--accent-bright); }
+
+/* Aria focus ring — elemental focus, clearly visible */
+.nav-card.is-focus .nav-card__btn {
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 0 2px rgb(var(--accent-bright-rgb) / 0.65), 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* invisible handles — the spine anchors to each card's mid-left/right */
+.react-flow__handle.nav-handle { opacity: 0; width: 6px; height: 6px; min-width: 0; min-height: 0; border: none; background: transparent; }
+
+/* tree edges: subtle by default, lit along the selected ancestry */
+.nav-edge .react-flow__edge-path { stroke: var(--edge); stroke-width: 1.5; }
+.nav-spine .react-flow__edge-path { stroke: var(--accent-bright); stroke-width: 2.5; }
+
+/* viewport mode toggle */
+.nav-modes { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--bg-1); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+.nav-modes button { background: var(--bg-2); border: none; color: var(--muted); padding: 5px 13px; font-size: 11px; cursor: pointer; }
+.nav-modes button.is-active { background: var(--accent); color: #fff; }
+
+/* focal class in the UML canvas */
+.class-node.is-focal { box-shadow: 0 0 0 2px var(--accent-bright), 0 8px 22px rgba(0, 0, 0, 0.5); }
+
+/* ── Custom scrollbars (palette) ──────────────────────────────────────────
+   Slate-graphite thumb that lights to oxblood on hover; transparent track. */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong); border-radius: 6px;
+  border: 3px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:active { background: var(--accent-bright); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+/* Image file viewer (non-source) */
+.code-pane__imeta { margin-left: auto; font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+.code-pane__image {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 24px;
+  background-color: var(--bg);
+  background-image: repeating-conic-gradient(#141416 0% 25%, transparent 0% 50%);
+  background-size: 22px 22px;
+}
+.code-pane__image img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55); }

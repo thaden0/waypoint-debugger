@@ -15,11 +15,58 @@ interface Props {
 
 // The UI is language-neutral; the editor just picks highlighting by extension so
 // it renders whichever adapter (PHP or JS/TS) the host serves.
+const EXT_LANG: Record<string, string> = {
+  php: 'php', ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  json: 'json', lock: 'json', md: 'markdown', markdown: 'markdown', yml: 'yaml', yaml: 'yaml',
+  css: 'css', scss: 'scss', less: 'less', html: 'html', htm: 'html', xml: 'xml', svg: 'xml', vue: 'html',
+  sh: 'shell', bash: 'shell', zsh: 'shell', sql: 'sql', env: 'ini', ini: 'ini', toml: 'ini', conf: 'ini', txt: 'plaintext',
+};
 function languageFor(path: string): string {
-  if (path.endsWith('.php')) return 'php';
-  if (path.endsWith('.ts') || path.endsWith('.tsx')) return 'typescript';
-  if (path.endsWith('.js') || path.endsWith('.jsx') || path.endsWith('.mjs')) return 'javascript';
-  return 'plaintext';
+  const name = (path.split('/').pop() ?? '').toLowerCase();
+  if (name === 'dockerfile' || name.startsWith('dockerfile.')) return 'dockerfile';
+  if (name.startsWith('.env')) return 'ini';
+  if (name.endsWith('.blade.php')) return 'html';
+  const ext = name.includes('.') ? name.split('.').pop()! : '';
+  return EXT_LANG[ext] ?? 'plaintext';
+}
+
+// Editor tabs. The unlocked tab is a single italic "preview" slot, reused when
+// you open another file. A filled oxblood dot = locked (pinned): it survives
+// opening other files and switching to the Class diagram. Click a tab to focus
+// it; click the dot or double-click the tab to lock/unlock.
+function TabStrip() {
+  const tabs = useStore((s) => s.tabs);
+  const openPath = useStore((s) => s.openPath);
+  const openFile = useStore((s) => s.openFile);
+  const toggleTabLock = useStore((s) => s.toggleTabLock);
+  const closeTab = useStore((s) => s.closeTab);
+  if (tabs.length === 0) return null;
+
+  return (
+    <div className="tabs" role="tablist">
+      {tabs.map((t) => (
+        <div
+          key={t.path}
+          role="tab"
+          aria-selected={t.path === openPath}
+          className={'tab' + (t.path === openPath ? ' is-active' : '') + (t.locked ? ' is-locked' : '')}
+          title={t.path + (t.locked ? ' · locked' : ' · preview (double-click to lock)')}
+          onClick={() => openFile(t.path)}
+          onDoubleClick={() => toggleTabLock(t.path)}
+        >
+          <button
+            className="tab__lock"
+            title={t.locked ? 'Locked — click to unlock' : 'Preview — click to lock open'}
+            onClick={(e) => { e.stopPropagation(); toggleTabLock(t.path); }}
+          >
+            {t.locked ? '●' : '○'}
+          </button>
+          <span className="tab__name">{t.path.split('/').pop()}</span>
+          <button className="tab__close" title="Close" onClick={(e) => { e.stopPropagation(); closeTab(t.path); }}>×</button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function CodeEditor({ placing }: Props) {
@@ -29,6 +76,7 @@ export function CodeEditor({ placing }: Props) {
 
   const source = useStore((s) => s.source);
   const savedSource = useStore((s) => s.savedSource);
+  const imageView = useStore((s) => s.imageView);
   const setEditedSource = useStore((s) => s.setEditedSource);
   const saveFile = useStore((s) => s.saveFile);
   const openPath = useStore((s) => s.openPath);
@@ -138,10 +186,25 @@ export function CodeEditor({ placing }: Props) {
     return <div className="editor-empty">Open a file from the explorer or double-click a class in the canvas.</div>;
   }
 
+  // Image files render in an <img> rather than the code editor.
+  if (imageView) {
+    return (
+      <div className="code-pane">
+        <TabStrip />
+        <div className="code-pane__bar">
+          <span className="code-pane__path">{openPath}</span>
+          <span className="code-pane__imeta">{imageView.mime}</span>
+        </div>
+        <div className="code-pane__image"><img src={imageView.url} alt={openPath} /></div>
+      </div>
+    );
+  }
+
   const dirty = source !== savedSource;
 
   return (
     <div className="code-pane">
+      <TabStrip />
       <div className="code-pane__bar">
         <span className="code-pane__path">{openPath}{dirty && <span className="code-pane__dirty" title="unsaved changes"> ●</span>}</span>
         <button className="code-pane__save" disabled={!dirty} onClick={() => saveFile()} title="Save (⌘/Ctrl+S)">

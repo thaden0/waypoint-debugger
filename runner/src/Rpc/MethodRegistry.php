@@ -99,6 +99,8 @@ final class MethodRegistry
             ],
 
             'fs.list' => fn (array $p) => $this->fsList($p['glob'] ?? '**/*.php'),
+            'fs.files' => fn () => $this->fsFiles(),
+            'fs.readBinary' => fn (array $p) => $this->readBinaryFile((string) $p['path']),
             'fs.read' => fn (array $p) => ['path' => $p['path'], 'source' => $this->readProjectFile($p['path'])],
             'fs.write' => function (array $p) {
                 $full = $this->resolve($p['path']);
@@ -515,6 +517,72 @@ final class MethodRegistry
         }
         sort($paths);
         return ['root' => $base, 'paths' => $paths];
+    }
+
+    /**
+     * Every project file (not just .php), so the UI can show configs, markdown,
+     * images, route files, etc. Heavy/generated dirs are pruned.
+     *
+     * @return array{root:string, paths:list<string>}
+     */
+    private function fsFiles(): array
+    {
+        $paths = [];
+        $base = $this->projectRoot;
+        $skipDir = ['vendor', 'node_modules', '.git', '.idea', '.fleet', '.vscode'];
+        $skipRel = ['storage/framework', 'storage/logs', 'bootstrap/cache', 'public/build', 'public/hot', 'dist'];
+        $iter = new \RecursiveIteratorIterator(
+            new \RecursiveCallbackFilterIterator(
+                new \RecursiveDirectoryIterator($base, \FilesystemIterator::SKIP_DOTS),
+                function (\SplFileInfo $f) use ($base, $skipDir, $skipRel): bool {
+                    if (!$f->isDir()) {
+                        return true;
+                    }
+                    if (in_array($f->getFilename(), $skipDir, true)) {
+                        return false;
+                    }
+                    $rel = ltrim(str_replace($base, '', $f->getPathname()), '/');
+                    return !in_array($rel, $skipRel, true);
+                }
+            )
+        );
+        foreach ($iter as $f) {
+            if ($f->isFile()) {
+                $paths[] = ltrim(str_replace($base, '', $f->getPathname()), '/');
+            }
+        }
+        sort($paths);
+        return ['root' => $base, 'paths' => $paths];
+    }
+
+    /**
+     * Read a binary file (image) as base64 + mime, so the UI can render it in an
+     * <img>. Bounded so a stray large asset can't blow up the channel.
+     *
+     * @return array{path:string, mime:string, base64:string, size:int}
+     */
+    private function readBinaryFile(string $path): array
+    {
+        $full = $this->resolve($path);
+        if (!is_file($full)) {
+            throw new RpcException(-32004, "not a file: {$path}");
+        }
+        $size = (int) filesize($full);
+        if ($size > 8 * 1024 * 1024) {
+            throw new RpcException(-32005, "file too large to preview: {$path}");
+        }
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = [
+            'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif',
+            'webp' => 'image/webp', 'svg' => 'image/svg+xml', 'ico' => 'image/x-icon',
+            'bmp' => 'image/bmp', 'avif' => 'image/avif',
+        ][$ext] ?? 'application/octet-stream';
+        return [
+            'path' => $path,
+            'mime' => $mime,
+            'base64' => base64_encode((string) file_get_contents($full)),
+            'size' => $size,
+        ];
     }
 
     /** Path to the project app-file holding the API console collection. */

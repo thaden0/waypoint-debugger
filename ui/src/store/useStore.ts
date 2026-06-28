@@ -60,7 +60,12 @@ interface State {
   hasHost: boolean;
 
   tree: TreeModel | null;
+  files: string[]; // every project file (configs, md, images, routes…), not just classes
+  imageView: { url: string; mime: string } | null; // set when the open file is an image
   openPath: string | null;
+  // Open editor tabs. An unlocked tab is the single "preview" slot (reused when
+  // you open another file); locking it pins the tab so it survives navigation.
+  tabs: { path: string; locked: boolean }[];
   source: string;
   savedSource: string; // last-persisted content; source !== savedSource => dirty
   structure: FileModel | null;
@@ -126,6 +131,8 @@ interface State {
   loadTree: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  toggleTabLock: (path: string) => void;
+  closeTab: (path: string) => void;
   setEditedSource: (source: string) => void;
   saveFile: () => Promise<void>;
   toggleMarker: (line: number, kind: MarkerKind) => void;
@@ -294,7 +301,10 @@ export const useStore = create<State>((set, get) => ({
   transport: 'none',
   hasHost: false,
   tree: null,
+  files: [],
+  imageView: null,
   openPath: null,
+  tabs: [],
   source: '',
   savedSource: '',
   structure: null,
@@ -400,8 +410,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   loadTree: async () => {
-    const tree = await rpc<TreeModel>('structure.tree', { root: '.' });
-    set({ tree });
+    const [tree, fileList] = await Promise.all([
+      rpc<TreeModel>('structure.tree', { root: '.' }),
+      rpc<{ paths: string[] }>('fs.files'),
+    ]);
+    set({ tree, files: fileList.paths });
   },
 
   openProject: async (root: string) => {
@@ -413,6 +426,9 @@ export const useStore = create<State>((set, get) => ({
       hasHost: (info.capabilities ?? []).includes('run'),
       // reset the workspace for the new project
       openPath: null,
+      tabs: [],
+      files: [],
+      imageView: null,
       source: '',
       structure: null,
       problems: [],
@@ -432,6 +448,34 @@ export const useStore = create<State>((set, get) => ({
   },
 
   openFile: async (path: string) => {
+    // Tab bookkeeping: if the file is already open keep its tab; otherwise reuse
+    // the single preview (unlocked) slot, or append one if every tab is locked.
+    set((s) => {
+      if (s.tabs.some((t) => t.path === path)) return { tabs: s.tabs };
+      const preview = s.tabs.findIndex((t) => !t.locked);
+      const tabs = [...s.tabs];
+      if (preview >= 0) tabs[preview] = { path, locked: false };
+      else tabs.push({ path, locked: false });
+      return { tabs };
+    });
+    const ext = (path.split('.').pop() ?? '').toLowerCase();
+    const IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp', 'avif'];
+
+    // Image → fetch as base64 and show it in an <img>.
+    if (IMAGE.includes(ext)) {
+      const bin = await rpc<{ mime: string; base64: string }>('fs.readBinary', { path });
+      set({ openPath: path, imageView: { url: `data:${bin.mime};base64,${bin.base64}`, mime: bin.mime }, source: '', savedSource: '', structure: null, problems: [], view: 'code', entryMethod: null });
+      return;
+    }
+
+    // Non-PHP text (config, md, json, route file, .jsx…) → open as plain text;
+    // no class structure or swap scan applies.
+    if (ext !== 'php') {
+      const { source } = await rpc<{ source: string }>('fs.read', { path });
+      set({ openPath: path, source, savedSource: source, structure: null, problems: [], imageView: null, view: 'code', entryMethod: null });
+      return;
+    }
+
     const [{ source }, structure, { problems }] = await Promise.all([
       rpc<{ source: string }>('fs.read', { path }),
       rpc<FileModel>('structure.file', { path }),
@@ -447,7 +491,22 @@ export const useStore = create<State>((set, get) => ({
         break;
       }
     }
-    set({ openPath: path, source, savedSource: source, structure, problems, view: 'code', entryMethod });
+    set({ openPath: path, source, savedSource: source, structure, problems, imageView: null, view: 'code', entryMethod });
+  },
+
+  toggleTabLock: (path) =>
+    set((s) => ({ tabs: s.tabs.map((t) => (t.path === path ? { ...t, locked: !t.locked } : t)) })),
+
+  closeTab: (path) => {
+    const { tabs, openPath } = get();
+    const idx = tabs.findIndex((t) => t.path === path);
+    const next = tabs.filter((t) => t.path !== path);
+    set({ tabs: next });
+    if (openPath === path) {
+      const fallback = next[Math.min(idx, next.length - 1)];
+      if (fallback) void get().openFile(fallback.path);
+      else set({ openPath: null, source: '', savedSource: '', structure: null, problems: [] });
+    }
   },
 
   setEditedSource: (source) => set({ source }),

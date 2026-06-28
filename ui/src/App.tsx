@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from './store/useStore';
-import { Canvas } from './canvas/Canvas';
 import { CodeEditor } from './editor/CodeEditor';
+import { Navigator } from './nav/Navigator';
 import { Explorer } from './panels/Explorer';
 import { SwapPanel } from './panels/SwapPanel';
 import { RunControls } from './panels/RunPanel';
@@ -154,7 +154,7 @@ export default function App() {
         <main className={'stage ' + (mode === 'running' ? 'stage--split' : '')}>
           <section className="stage__primary">
             <div className="stage__main">
-              {view === 'canvas' ? <Canvas /> : <CodeEditor placing={placing} />}
+              {view === 'canvas' ? <Navigator /> : <CodeEditor placing={placing} />}
             </div>
 
             {/* Bottom dock — in running mode, or whenever a frontend runner is

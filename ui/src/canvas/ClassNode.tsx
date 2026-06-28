@@ -12,6 +12,7 @@ const SHOW_MEMBERS_ZOOM = 0.7;
 interface ClassNodeData extends Record<string, unknown> {
   model: ClassModel;
   filePath: string;
+  focal?: boolean;
 }
 
 const KIND_COLOR: Record<string, string> = {
@@ -24,7 +25,7 @@ const KIND_COLOR: Record<string, string> = {
 const VIS_GLYPH: Record<string, string> = { public: '+', protected: '#', private: '-' };
 
 export function ClassNode({ data }: NodeProps) {
-  const { model, filePath } = data as ClassNodeData;
+  const { model, filePath, focal } = data as ClassNodeData;
   const zoom = useFlowStore((s) => s.transform[2]);
   const openFile = useStore((s) => s.openFile);
   const revealMember = useStore((s) => s.revealMember);
@@ -36,7 +37,7 @@ export function ClassNode({ data }: NodeProps) {
 
   return (
     <div
-      className="class-node"
+      className={'class-node' + (focal ? ' is-focal' : '')}
       style={{ borderTopColor: accent }}
       onDoubleClick={() => openFile(filePath)}
       title="Double-click to open in the code editor"
