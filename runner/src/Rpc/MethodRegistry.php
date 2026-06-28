@@ -10,6 +10,7 @@ use Waypoint\Runner\Host\HostInterface;
 use Waypoint\Runner\Module\FrameworkModule;
 use Waypoint\Runner\Module\ModuleFactory;
 use Waypoint\Runner\Module\ModuleRegistry;
+use Waypoint\Runner\Module\LocalConfig;
 use Waypoint\Runner\Module\OrmProvider;
 use Waypoint\Runner\Module\ProjectConfig;
 use Waypoint\Runner\Workspace\Provisioner;
@@ -219,6 +220,33 @@ final class MethodRegistry
                 $result = (new Provisioner($this->projectRoot))->provision((string) ($p['action'] ?? ''));
                 $result['status'] = (new Provisioner($this->projectRoot))->status();
                 return $result;
+            },
+
+            // In-project probe (§14.4): the tool reaches into the app's probe
+            // endpoint server-side (no CORS; works to staging/prod). The endpoint +
+            // secret live in the personal .waypoint/local.json (never committed).
+            'probe.settings.get' => function () {
+                $probe = LocalConfig::read($this->projectRoot)['probe'] ?? [];
+                return ['probe' => ['url' => $probe['url'] ?? null, 'secret' => $probe['secret'] ?? null]];
+            },
+            'probe.settings.save' => function (array $p) {
+                $local = LocalConfig::read($this->projectRoot);
+                $local['probe'] = ['url' => $p['url'] ?? null, 'secret' => $p['secret'] ?? null];
+                LocalConfig::write($this->projectRoot, $local);
+                return ['ok' => true];
+            },
+            'probe.pull' => function (array $p) {
+                $s = LocalConfig::read($this->projectRoot)['probe'] ?? [];
+                $url = (string) ($s['url'] ?? '');
+                if (($p['ack'] ?? false) === false) {
+                    $url .= (str_contains($url, '?') ? '&' : '?') . 'ack=0';
+                }
+                return $this->probeHttp('GET', $url, (string) ($s['secret'] ?? ''), null);
+            },
+            'probe.config' => function (array $p) {
+                $s = LocalConfig::read($this->projectRoot)['probe'] ?? [];
+                $body = json_encode(['ring_buffer' => (bool) ($p['ring_buffer'] ?? false), 'triggers' => array_values($p['triggers'] ?? [])]);
+                return $this->probeHttp('POST', (string) ($s['url'] ?? ''), (string) ($s['secret'] ?? ''), $body);
             },
 
             'project.config.get' => fn () => ['config' => ProjectConfig::read($this->projectRoot)],
@@ -584,6 +612,49 @@ final class MethodRegistry
             'contentType' => $contentType,
             'durationMs' => $durationMs,
         ]];
+    }
+
+    /**
+     * Reach the in-project probe endpoint server-side with the shared secret.
+     *
+     * @return array{ok:bool,error?:string,records?:array,config?:array,app?:?string,env?:?string}
+     */
+    private function probeHttp(string $method, string $url, string $secret, ?string $body): array
+    {
+        if ($url === '') {
+            return ['ok' => false, 'error' => 'no probe endpoint configured'];
+        }
+        $headers = ['X-Waypoint-Secret: ' . $secret, 'Accept: application/json'];
+        if ($body !== null) {
+            $headers[] = 'Content-Type: application/json';
+        }
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        if ($body !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        }
+        $raw = curl_exec($ch);
+        if ($raw === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            return ['ok' => false, 'error' => "probe unreachable: {$err}"];
+        }
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        if ($code === 401) {
+            return ['ok' => false, 'error' => 'unauthorized — check the probe secret'];
+        }
+        $data = json_decode((string) $raw, true);
+        if ($code >= 400 || !is_array($data)) {
+            return ['ok' => false, 'error' => "probe returned HTTP {$code}"];
+        }
+        return ['ok' => true] + $data;
     }
 
     private function readProjectFile(string $path): string

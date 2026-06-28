@@ -7,6 +7,7 @@ import { SwapPanel } from './panels/SwapPanel';
 import { RunControls } from './panels/RunPanel';
 import { ApiConsole } from './panels/ApiConsole';
 import { OrmConsole } from './panels/OrmConsole';
+import { ProbePanel } from './panels/ProbePanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { ProjectPicker, ProvisioningCard } from './panels/ProjectPicker';
 import { BrowserPane } from './panels/RunPanels';
@@ -74,6 +75,9 @@ export default function App() {
           <button className={view === 'data' ? 'is-active' : ''} onClick={() => setView('data')}>
             Data
           </button>
+          <button className={view === 'probe' ? 'is-active' : ''} onClick={() => setView('probe')}>
+            Probe
+          </button>
         </nav>
 
         {view === 'code' && openPath && (
@@ -133,6 +137,10 @@ export default function App() {
       ) : view === 'data' ? (
         <div className="workbench workbench--api">
           <OrmConsole />
+        </div>
+      ) : view === 'probe' ? (
+        <div className="workbench workbench--api">
+          <ProbePanel />
         </div>
       ) : (
       <div className="workbench">

@@ -917,3 +917,46 @@ button.primary:hover:not(:disabled) { filter: brightness(1.18); box-shadow: 0 0 
 .festate__bar { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 11px; }
 .festate__empty { padding: 14px; }
 .festate__tree { flex: 1; overflow: auto; margin: 0; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); white-space: pre; }
+
+/* Probe view */
+.probe { display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0; background: var(--bg-1); }
+.probe__bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.probe__title { font-weight: 700; font-size: 13px; margin-right: 4px; }
+.probe__url { flex: 1; min-width: 0; background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 10px; font-family: ui-monospace, monospace; font-size: 12px; }
+.probe__secret { width: 130px; background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+.probe__url:focus, .probe__secret:focus { outline: none; border-color: var(--accent); }
+.probe__pull { background: var(--cta-grad); border: 1px solid rgb(var(--accent-rgb) / 0.5); color: #fff; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; box-shadow: var(--cta-glow); }
+.probe__pull:disabled { opacity: 0.6; cursor: default; }
+.probe__env { font-size: 11px; color: var(--muted); }
+.probe__envtag.prod { color: var(--bp); font-weight: 700; }
+.probe__cfg { display: flex; align-items: center; gap: 14px; padding: 7px 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.probe__cfg-item { display: inline-flex; align-items: center; gap: 5px; }
+.probe__triggers { background: var(--bg-1); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 3px 7px; font-size: 11px; font-family: ui-monospace, monospace; width: 220px; }
+.probe__cfg-hint { margin-left: auto; }
+.probe__list { flex: 1; overflow-y: auto; min-height: 0; padding: 8px 12px; }
+.probe__empty, .probe__err { padding: 14px; font-size: 12px; }
+.probe__err { color: var(--bp); }
+
+.probe-rec { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 6px; margin-bottom: 6px; background: var(--bg-2); }
+.probe-rec.exception { border-left-color: var(--bp); }
+.probe-rec__head { display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; font-size: 12px; }
+.probe-rec__head:hover { background: var(--bg-3); }
+.probe-rec__kind { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 4px; }
+.probe-rec__kind.exception { color: var(--bp); background: rgb(var(--bp-rgb) / 0.16); }
+.probe-rec__kind.log { color: var(--warn); background: rgb(var(--warn-rgb) / 0.14); }
+.probe-rec__msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-rec__msg code { color: var(--code-id); }
+.probe-rec__req { font-family: ui-monospace, monospace; font-size: 11px; color: var(--brass); }
+.probe-rec__when { font-size: 10px; }
+.probe-rec__body { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; display: flex; flex-direction: column; gap: 6px; }
+.probe-rec__loc { font-family: ui-monospace, monospace; color: var(--muted); }
+.probe-rec__kv { display: flex; gap: 8px; } .probe-rec__kv code { font-family: ui-monospace, monospace; color: var(--text); word-break: break-all; }
+.probe-rec__trace summary { color: var(--muted); cursor: pointer; }
+.probe-rec__frame { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted); padding: 1px 0 1px 10px; }
+.probe-rec__action { margin-top: 2px; }
+.probe-rec__trace-btn { background: transparent; border: 1px solid rgb(var(--accent-rgb) / 0.45); color: var(--accent-bright); border-radius: 5px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+.probe-rec__trace-btn:hover { background: rgb(var(--accent-rgb) / 0.12); }
+.probe-rec__traceres { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.probe-rec__arrow { color: var(--brass); font-size: 11px; }
+.probe-rec__wp { color: var(--code-id); background: var(--bg-1); border-radius: 3px; padding: 1px 6px; font-family: ui-monospace, monospace; }
+.probe-rec__traceerr { color: var(--bp); font-size: 11px; }

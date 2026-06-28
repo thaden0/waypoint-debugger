@@ -111,6 +111,14 @@ interface State {
   feState: unknown;
   feLedger: { seq: number; action?: string }[];
   feStateError: string | null;
+  probeUrl: string;
+  probeSecret: string;
+  probeRecords: ProbeRecord[];
+  probeConfig: { ring_buffer: boolean; triggers: string[] };
+  probeApp: string | null;
+  probeEnv: string | null;
+  probeError: string | null;
+  probePulling: boolean;
   browserSrc: string | null;
   log: string[];
 
@@ -164,6 +172,27 @@ interface State {
   pollNetwork: () => Promise<void>;
   traceRequest: (rec: NetworkRecord) => Promise<void>;
   snapshotFeState: () => Promise<void>;
+  loadProbe: () => Promise<void>;
+  setProbeUrl: (url: string) => void;
+  setProbeSecret: (secret: string) => void;
+  saveProbe: () => Promise<void>;
+  probePull: () => Promise<void>;
+  probePushConfig: (config: { ring_buffer: boolean; triggers: string[] }) => Promise<void>;
+  traceProbeRecord: (rec: ProbeRecord) => Promise<void>;
+}
+
+export interface ProbeRecord {
+  id: string;
+  kind: 'exception' | 'log';
+  at: number;
+  class?: string;
+  message: string;
+  file?: string;
+  line?: number;
+  trace?: string[];
+  level?: string;
+  request?: { method?: string; uri?: string; input?: Record<string, unknown>; headers?: Record<string, string> };
+  context?: Record<string, unknown>;
 }
 
 export interface NetworkRecord {
@@ -309,6 +338,14 @@ export const useStore = create<State>((set, get) => ({
   feState: null,
   feLedger: [],
   feStateError: null,
+  probeUrl: '',
+  probeSecret: '',
+  probeRecords: [],
+  probeConfig: { ring_buffer: false, triggers: [] },
+  probeApp: null,
+  probeEnv: null,
+  probeError: null,
+  probePulling: false,
   browserSrc: null,
   log: [],
 
@@ -815,6 +852,62 @@ export const useStore = create<State>((set, get) => ({
       const res = await rpcFrontend<{ requests: NetworkRecord[] }>('cdp.network', { all: get().networkAll });
       set({ network: res.requests });
     } catch { /* transient */ }
+  },
+
+  // In-project probe: pull buffered errors/logs from the app endpoint (host-side),
+  // push config, and trace a captured error through the instrumented host.
+  loadProbe: async () => {
+    try {
+      const r = await rpc<{ probe: { url: string | null; secret: string | null } }>('probe.settings.get');
+      set({ probeUrl: r.probe.url ?? '', probeSecret: r.probe.secret ?? '' });
+    } catch { /* ignore */ }
+  },
+  setProbeUrl: (url) => set({ probeUrl: url }),
+  setProbeSecret: (secret) => set({ probeSecret: secret }),
+  saveProbe: async () => {
+    await rpc('probe.settings.save', { url: get().probeUrl, secret: get().probeSecret }).catch(() => null);
+  },
+  probePull: async () => {
+    set({ probePulling: true, probeError: null });
+    try {
+      await get().saveProbe();
+      const r = await rpc<{ ok: boolean; error?: string; records?: ProbeRecord[]; config?: { ring_buffer: boolean; triggers: string[] }; app?: string; env?: string }>('probe.pull', { ack: false });
+      if (!r.ok) { set({ probeError: r.error ?? 'pull failed' }); return; }
+      set({ probeRecords: r.records ?? [], probeConfig: r.config ?? get().probeConfig, probeApp: r.app ?? null, probeEnv: r.env ?? null });
+    } finally {
+      set({ probePulling: false });
+    }
+  },
+  probePushConfig: async (config) => {
+    set({ probeConfig: config }); // optimistic
+    try {
+      const r = await rpc<{ ok: boolean; config?: { ring_buffer: boolean; triggers: string[] } }>('probe.config', config);
+      if (r.ok && r.config) set({ probeConfig: r.config });
+    } catch { /* ignore */ }
+  },
+  traceProbeRecord: async (rec) => {
+    if (!rec.request) return;
+    set({ tracing: rec.id });
+    try {
+      const method = rec.request.method ?? 'GET';
+      const body = method !== 'GET' && method !== 'HEAD' && rec.request.input && Object.keys(rec.request.input).length ? JSON.stringify(rec.request.input) : undefined;
+      set({ ledger: [], breakpointHits: [] });
+      const res = await rpc<{ ok: boolean; response?: { status?: number }; error?: string; ledger?: LedgerEntry[]; breakpoints?: BreakpointHit[] }>('api.send', {
+        target: 'inprocess',
+        method,
+        uri: rec.request.uri ?? '/',
+        headers: body ? { 'content-type': 'application/json' } : {},
+        body,
+        targets: targetsFromMarkers(get().markers, get().swaps),
+      });
+      const trace: TraceResult = res.ok
+        ? { ok: true, status: res.response?.status, ledger: res.ledger, ledgerCount: res.ledger?.length ?? 0 }
+        : { ok: false, error: res.error, ledgerCount: 0 };
+      if (res.ledger) set({ ledger: res.ledger, breakpointHits: res.breakpoints ?? [] });
+      set((s) => ({ traces: { ...s.traces, [rec.id]: trace } }));
+    } finally {
+      set({ tracing: null });
+    }
   },
 
   // Frontend framework-state (CDP): snapshot the live store + its action ledger.
