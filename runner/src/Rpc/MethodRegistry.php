@@ -192,6 +192,14 @@ final class MethodRegistry
 
             // API console persistence: saved requests + environments live in the
             // project app-file (.waypoint/api.json) so a team can share them.
+            // Persisted editor state — markers (waypoints/breakpoints) + swaps,
+            // anchored to Class::method so they survive edits. .waypoint/markers.json.
+            'state.load' => fn () => $this->loadState(),
+            'state.save' => function (array $p) {
+                $this->saveState(['markers' => $p['markers'] ?? [], 'swaps' => $p['swaps'] ?? []]);
+                return ['ok' => true];
+            },
+
             'api.collection.load' => fn () => ['collection' => $this->loadCollection()],
             'api.collection.save' => function (array $p) {
                 $this->saveCollection($p['collection'] ?? []);
@@ -763,6 +771,30 @@ final class MethodRegistry
     }
 
     /** @param array<string,mixed> $collection */
+    /** @return array{markers:array<int,mixed>, swaps:array<int,mixed>} */
+    private function loadState(): array
+    {
+        $default = ['markers' => [], 'swaps' => []];
+        $file = $this->waypointFile('markers.json');
+        if (!is_file($file)) {
+            return $default;
+        }
+        $data = json_decode((string) @file_get_contents($file), true);
+        return is_array($data) ? $data + $default : $default;
+    }
+
+    /** @param array{markers:array<int,mixed>, swaps:array<int,mixed>} $state */
+    private function saveState(array $state): void
+    {
+        $dir = $this->projectRoot . '/.waypoint';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new RpcException(-32050, 'cannot create .waypoint directory');
+        }
+        if (@file_put_contents($this->waypointFile('markers.json'), json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
+            throw new RpcException(-32052, 'cannot write .waypoint/markers.json');
+        }
+    }
+
     private function saveCollection(array $collection): void
     {
         $dir = $this->projectRoot . '/.waypoint';

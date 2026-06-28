@@ -96,10 +96,19 @@ export interface Problem {
 // Editor markers placed in the gutter, like breakpoints in VS Code.
 export type MarkerKind = 'breakpoint' | 'waypoint';
 
+// A stable anchor so a marker/swap follows edits: the enclosing class+method and
+// the line offset from the method's start. Re-resolved against fresh structure.
+export interface MarkerAnchor {
+  fqn: string;
+  method: string;
+  offset: number;
+}
+
 export interface GutterMarker {
   path: string;
   line: number;
   kind: MarkerKind;
+  anchor?: MarkerAnchor;
 }
 
 export interface SwapSite {
@@ -109,6 +118,7 @@ export interface SwapSite {
   key?: string;
   expression?: string;
   label: string;
+  anchor?: MarkerAnchor;
 }
 
 export interface Snapshot {

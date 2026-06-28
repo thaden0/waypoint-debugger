@@ -4,10 +4,12 @@ import { wsClient } from '../rpc/ws';
 import { runners, FRONTEND_WS_URL, type RunnerDescriptor } from '../rpc/runners';
 import type {
   BreakpointHit,
+  ClassModel,
   FileModel,
   GutterMarker,
   InvokeResult,
   LedgerEntry,
+  MarkerAnchor,
   MarkerKind,
   Mode,
   Problem,
@@ -17,6 +19,9 @@ import type {
   TreeModel,
   View,
 } from '../types';
+
+// Debounce handle for persisting marker/swap state to .waypoint/markers.json.
+let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface RunnerInfo {
   language: string;
@@ -149,6 +154,8 @@ interface State {
   toggleMarker: (line: number, kind: MarkerKind) => void;
   addSwap: (swap: SwapSite) => void;
   removeSwap: (path: string, line: number) => void;
+  loadState: () => Promise<void>;
+  saveState: () => void;
   setView: (view: View) => void;
   setMode: (mode: Mode) => void;
   setCanvasMode: (m: 'flat' | 'tree') => void;
@@ -409,6 +416,7 @@ export const useStore = create<State>((set, get) => ({
         hasHost: (info.capabilities ?? []).includes('run'),
         runners: [backend, fe].filter(Boolean) as RunnerDescriptor[],
       });
+      void get().loadState();
       return;
     }
     // Fall back to HTTP (static analysis only).
@@ -457,7 +465,7 @@ export const useStore = create<State>((set, get) => ({
       mode: 'idle',
     });
     await get().loadTree();
-    await Promise.all([get().loadProjects(), get().loadStatus()]);
+    await Promise.all([get().loadProjects(), get().loadStatus(), get().loadState()]);
   },
 
   openFile: async (path: string) => {
@@ -514,6 +522,19 @@ export const useStore = create<State>((set, get) => ({
         break;
       }
     }
+    // Re-anchor any persisted markers/swaps for this file against fresh structure,
+    // so they follow edits made since they were placed.
+    const reMarker = (m: GutterMarker): GutterMarker => {
+      if (m.path !== path || !m.anchor) return m;
+      const ln = resolveAnchor(structure, m.anchor);
+      return ln && ln !== m.line ? { ...m, line: ln } : m;
+    };
+    const reSwap = (s: SwapSite): SwapSite => {
+      if (s.path !== path || !s.anchor) return s;
+      const ln = resolveAnchor(structure, s.anchor);
+      return ln && ln !== s.line ? { ...s, line: ln } : s;
+    };
+    set((st) => ({ markers: st.markers.map(reMarker), swaps: st.swaps.map(reSwap) }));
     commit({ source, savedSource: source, structure, problems, entryMethod, imageView: null });
   },
 
@@ -564,24 +585,48 @@ export const useStore = create<State>((set, get) => ({
   },
 
   toggleMarker: (line, kind) => {
-    const { markers, openPath } = get();
+    const { markers, openPath, structure } = get();
     if (!openPath) return;
     const existing = markers.find((m) => m.path === openPath && m.line === line && m.kind === kind);
     if (existing) {
       set({ markers: markers.filter((m) => m !== existing) });
     } else {
       const cleaned = markers.filter((m) => !(m.path === openPath && m.line === line));
-      set({ markers: [...cleaned, { path: openPath, line, kind }] });
+      set({ markers: [...cleaned, { path: openPath, line, kind, anchor: computeAnchor(structure, line) }] });
     }
+    get().saveState();
   },
 
   addSwap: (swap) => {
-    const swaps = get().swaps.filter((s) => !(s.path === swap.path && s.line === swap.line));
-    set({ swaps: [...swaps, swap] });
+    const { swaps, structure } = get();
+    const filtered = swaps.filter((s) => !(s.path === swap.path && s.line === swap.line));
+    set({ swaps: [...filtered, { ...swap, anchor: swap.anchor ?? computeAnchor(structure, swap.line) }] });
+    get().saveState();
   },
 
   removeSwap: (path, line) => {
     set({ swaps: get().swaps.filter((s) => !(s.path === path && s.line === line)) });
+    get().saveState();
+  },
+
+  // Load persisted markers/swaps for the project; re-anchoring happens lazily as
+  // each file opens (against its fresh structure).
+  loadState: async () => {
+    try {
+      const { markers, swaps } = await rpc<{ markers: GutterMarker[]; swaps: SwapSite[] }>('state.load');
+      set({ markers: markers ?? [], swaps: swaps ?? [] });
+    } catch {
+      /* no persisted state */
+    }
+  },
+
+  // Debounced persist of the full marker/swap set to .waypoint/markers.json.
+  saveState: () => {
+    if (saveStateTimer) clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(() => {
+      const { markers, swaps } = get();
+      void rpc('state.save', { markers, swaps }).catch(() => {});
+    }, 400);
   },
 
   setView: (view) => set({ view }),
@@ -1057,6 +1102,36 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 }));
+
+// Find the enclosing class+method for a line, so a marker can be re-located after
+// edits. Returns the offset from the method's start line.
+function computeAnchor(structure: FileModel | null, line: number): MarkerAnchor | undefined {
+  if (!structure) return undefined;
+  for (const node of structure.nodes) {
+    if (node.kind === 'function') continue;
+    const cls = node as ClassModel;
+    for (const m of cls.members) {
+      if (m.kind === 'method' && line >= m.line.start && line <= m.line.end) {
+        return { fqn: cls.fqn, method: m.name, offset: line - m.line.start };
+      }
+    }
+  }
+  return undefined;
+}
+
+// Resolve an anchor back to a current line against fresh structure.
+function resolveAnchor(structure: FileModel | null, anchor: MarkerAnchor): number | undefined {
+  if (!structure) return undefined;
+  const short = anchor.fqn.split('\\').pop();
+  for (const node of structure.nodes) {
+    if (node.kind === 'function') continue;
+    const cls = node as ClassModel;
+    if (cls.fqn !== anchor.fqn && cls.name !== short) continue;
+    const m = cls.members.find((mm) => mm.kind === 'method' && mm.name === anchor.method);
+    if (m) return m.line.start + anchor.offset;
+  }
+  return undefined;
+}
 
 // Build run.request/api.send capture targets from the editor markers — the same
 // shape used by Run-request and the API console.

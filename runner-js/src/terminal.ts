@@ -20,12 +20,19 @@ wss.on('connection', (ws, req) => {
   const reqCwd = url.searchParams.get('cwd');
   const cwd = reqCwd && existsSync(reqCwd) && statSync(reqCwd).isDirectory() ? reqCwd : DEFAULT_CWD;
 
+  // Drop the npm/node env this server was launched with, so the user's shell rc
+  // (e.g. nvm) loads cleanly instead of warning about npm_config_prefix.
+  const env: Record<string, string> = { TERM: 'xterm-256color' };
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && !/^npm_|^NODE_/i.test(k)) env[k] = v;
+  }
+
   const term = pty.spawn(SHELL, [], {
     name: 'xterm-256color',
     cols: 80,
     rows: 24,
     cwd,
-    env: { ...process.env, TERM: 'xterm-256color' },
+    env,
   });
 
   term.onData((d) => {
